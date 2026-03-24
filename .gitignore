@@ -1,0 +1,37 @@
+# Data (all embeddings, datasets, and large files)
+data/datasets/
+data/embeddings/
+*.pt
+*.pth
+*.ckpt
+
+# Results
+results/
+experiments/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.venv/
+venv/
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Torch Hub cache
+.cache/

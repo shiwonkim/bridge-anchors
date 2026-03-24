@@ -1,0 +1,49 @@
+# Bridge Anchors — Default Configuration
+
+# Model
+model:
+  name: bridge_anchors
+  dim_img: 768          # DINOv2 ViT-B/14 output dimension
+  dim_txt: 768          # all-mpnet-base-v2 output dimension
+  num_anchors: 32       # Number of bridge anchor points (K)
+  init_method: random   # 'random' | 'prototype'
+
+# Baselines
+baseline:
+  mlp_hidden_dim: 256   # Bottleneck dim for MLPProjection
+
+# Training
+training:
+  batch_size: 256
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  epochs: 20
+  temperature: 0.07
+  scheduler: cosine
+  ortho_lambda: 0.0     # Orthogonality regularization weight (0 = disabled)
+  lb_lambda: 0.0        # Load-balancing loss weight (0 = disabled)
+  pa_lambda: 0.0        # Per-anchor contrastive loss weight (0 = disabled)
+  warmup_epochs: 2
+  num_workers: 4
+  seed: 42
+
+# Data
+data:
+  dataset: coco
+  img_emb_path: data/embeddings/coco_train_img.pt
+  txt_emb_path: data/embeddings/coco_train_txt.pt
+  num_samples: null     # null = use all; set integer for data efficiency experiments
+
+# Evaluation
+eval:
+  flickr_img_emb_path: data/embeddings/flickr30k_test_img.pt
+  flickr_txt_emb_path: data/embeddings/flickr30k_test_txt.pt
+  imagenet_img_emb_path: data/embeddings/imagenet_val_img.pt
+  imagenet_txt_emb_path: data/embeddings/imagenet_val_txt.pt
+  eval_every: 1         # Evaluate every N epochs
+
+# Logging
+logging:
+  log_dir: results/logs
+  save_dir: results/checkpoints
+  experiment_name: default

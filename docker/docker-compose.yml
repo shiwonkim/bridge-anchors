@@ -1,0 +1,14 @@
+services:
+  bridge-anchors:
+    build: .
+    runtime: nvidia
+    volumes:
+      - ../:/workspace/bridge-anchors  # mount code repo
+      - /path/to/data:/workspace/data  # adjust on new server
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - PYTHONPATH=/workspace/bridge-anchors
+    working_dir: /workspace/bridge-anchors
+    shm_size: '16gb'
+    stdin_open: true
+    tty: true

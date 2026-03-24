@@ -1,0 +1,25 @@
+# Only requirements.txt and Dockerfile are needed in build context
+# Everything else is excluded
+
+# Data
+../data/
+../experiments/
+../results/
+
+# Code (mounted at runtime, not baked in)
+../src/
+../scripts/
+../configs/
+
+# Git
+../.git/
+
+# Python cache
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Large files
+**/*.pt
+**/*.pth
+**/*.ckpt
