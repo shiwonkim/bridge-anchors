@@ -35,14 +35,14 @@ bash docker/setup_server.sh /path/to/bridge-anchors /path/to/data
 - Docker with `nvidia-container-toolkit` installed
 - NVIDIA GPU with driver supporting CUDA >= 11.8
 
-**Docker Hub image**: `shiwonkim/bridge-anchors:v1`
+**Docker Hub image**: `shiwonkim/bridge-anchors:v2`
 
 ## Build (from source)
 
 Only needed if you want to rebuild the image locally:
 ```bash
 cd docker
-docker build -t bridge-anchors:v1 .
+docker build -t bridge-anchors:v2 .
 ```
 
 ## Run (manual)
@@ -53,7 +53,7 @@ docker run --gpus all -it --shm-size=16g \
   -v /path/to/bridge-anchors:/workspace/bridge-anchors \
   -e PYTHONPATH=/workspace/bridge-anchors \
   -w /workspace/bridge-anchors \
-  bridge-anchors:v1 bash
+  bridge-anchors:v2 bash
 ```
 
 ### With separate data mount
@@ -63,7 +63,7 @@ docker run --gpus all -it --shm-size=16g \
   -v /path/to/data:/workspace/bridge-anchors/data \
   -e PYTHONPATH=/workspace/bridge-anchors \
   -w /workspace/bridge-anchors \
-  bridge-anchors:v1 bash
+  bridge-anchors:v2 bash
 ```
 
 ### With docker-compose
