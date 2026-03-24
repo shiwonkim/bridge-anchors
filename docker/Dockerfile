@@ -29,6 +29,11 @@ WORKDIR /workspace
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
+# Install Node.js 20 for Claude Code
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g @anthropic-ai/claude-code
+
 # Verify key packages
 RUN python -c "\
 import torch; \
