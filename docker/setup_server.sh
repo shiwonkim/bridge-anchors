@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-IMAGE="shiwonkim/bridge-anchors:v1"
+IMAGE="shiwonkim/bridge-anchors:v2"
 
 # Defaults: code = current repo root, data = code/data
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
