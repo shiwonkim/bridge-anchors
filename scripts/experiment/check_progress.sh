@@ -1,8 +1,8 @@
 #!/bin/bash
 # Check progress of Experiment A runs.
-# Usage: ./scripts/check_progress.sh
+# Usage: ./scripts/experiment/check_progress.sh
 
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 EXP_DIR="${PROJECT_ROOT}/experiments/exp_a_main"
 CKPT_DIR="${PROJECT_ROOT}/results/checkpoints"
 LOGFILE="${EXP_DIR}/experiment_log.txt"

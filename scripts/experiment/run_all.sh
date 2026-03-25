@@ -2,17 +2,17 @@
 # Run all experiments sequentially: A → B → C → D → collect results
 #
 # Prerequisites:
-#   1. Embeddings extracted: ./scripts/extract_embeddings.sh
+#   1. Embeddings extracted: ./scripts/extraction/extract_embeddings.sh
 #   2. Dependencies installed: pip install -r requirements.txt
 #
 # Usage:
-#   ./scripts/run_all.sh              # run everything
-#   ./scripts/run_all.sh --skip-a     # skip experiment A
-#   ./scripts/run_all.sh --only b     # run only experiment B
+#   ./scripts/experiment/run_all.sh              # run everything
+#   ./scripts/experiment/run_all.sh --skip-a     # skip experiment A
+#   ./scripts/experiment/run_all.sh --only b     # run only experiment B
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # --- Parse args ---
 SKIP_A=false
@@ -48,7 +48,7 @@ fi
 EMB_DIR="${PROJECT_ROOT}/data/embeddings"
 if [ ! -f "${EMB_DIR}/coco_train_img.pt" ]; then
     echo "ERROR: COCO train embeddings not found."
-    echo "Run: ./scripts/extract_embeddings.sh"
+    echo "Run: ./scripts/extraction/extract_embeddings.sh"
     exit 1
 fi
 if [ ! -f "${EMB_DIR}/flickr30k_test_img.pt" ]; then
@@ -91,7 +91,7 @@ fi
 
 # --- Collect results ---
 echo ">>> Collecting results..."
-python "${SCRIPT_DIR}/collect_results.py"
+python "${PROJECT_ROOT}/scripts/analysis/collect_results.py"
 
 END_TIME=$(date +%s)
 ELAPSED=$(( END_TIME - START_TIME ))

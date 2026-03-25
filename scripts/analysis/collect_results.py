@@ -4,8 +4,8 @@ Scans checkpoint directories for best.pt files, extracts stored metrics
 and config, and writes a summary CSV and console table.
 
 Usage:
-    python scripts/collect_results.py
-    python scripts/collect_results.py --exp exp_a
+    python scripts/analysis/collect_results.py
+    python scripts/analysis/collect_results.py --exp exp_a
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CKPT_DIR = PROJECT_ROOT / "results" / "checkpoints"
 
 

@@ -6,7 +6,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 CONFIG="${PROJECT_ROOT}/configs/default.yaml"
 EXP_DIR="${PROJECT_ROOT}/experiments/exp_c_data_efficiency"
 

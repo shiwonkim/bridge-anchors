@@ -1,13 +1,13 @@
-# Data (all embeddings, datasets, and large files)
-data/datasets/
-data/embeddings/
-*.pt
-*.pth
-*.ckpt
+# Data - ignore heavy files but keep structure and READMEs
+data/embeddings/*
+!data/embeddings/.gitkeep
+data/datasets/*
+!data/datasets/README.md
 
-# Results
-results/
+# Results and experiments
 experiments/
+results/
+*.pt
 
 # Python
 __pycache__/

@@ -14,7 +14,7 @@ import yaml
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 LAYER_PAIRS = [
     {"name": "b9_l10", "dino_block": 9, "mpnet_layer": 10, "cka": 0.586},

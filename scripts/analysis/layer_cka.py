@@ -4,7 +4,7 @@ Computes linear CKA between all (DINOv2_layer_i, MPNet_layer_j) pairs
 to find which intermediate layers have the highest cross-modal similarity.
 
 Usage:
-    python -m src.eval.layer_cka --n-samples 5000 --seed 42
+    python scripts/analysis/layer_cka.py --n-samples 5000 --seed 42
 """
 
 from __future__ import annotations

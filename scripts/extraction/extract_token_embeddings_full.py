@@ -7,7 +7,7 @@ Last chunk is smaller (8287 samples).
 Text: symlinks existing CLS text embeddings (already float32, 347MB).
 
 Usage:
-    PYTHONPATH=/home/shiwon/bridge-anchors python scripts/extract_token_embeddings_full.py
+    PYTHONPATH=/home/shiwon/bridge-anchors python scripts/extraction/extract_token_embeddings_full.py
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = PROJECT_ROOT / "data" / "embeddings" / "token_full"  # LOCAL SSD
 
 CHUNK_SIZE = 10000
