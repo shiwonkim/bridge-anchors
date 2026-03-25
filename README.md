@@ -64,7 +64,7 @@ bridge-anchors/
 
 ```bash
 # Pull the pre-built environment image
-docker pull shiwonkim/bridge-anchors:v1
+docker pull shiwonkim/bridge-anchors:v2
 
 # Run with code and data mounted
 docker run --gpus all -it --shm-size=16g \
@@ -72,7 +72,7 @@ docker run --gpus all -it --shm-size=16g \
   -v /path/to/data:/workspace/bridge-anchors/data \
   -e PYTHONPATH=/workspace/bridge-anchors \
   -w /workspace/bridge-anchors \
-  shiwonkim/bridge-anchors:v1 bash
+  shiwonkim/bridge-anchors:v2 bash
 ```
 
 See [`docker/README.md`](docker/README.md) for details.
