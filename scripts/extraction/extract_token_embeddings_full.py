@@ -1,13 +1,14 @@
-"""Extract full-scale token-level DINOv2 embeddings for COCO 118K (float16).
+"""Extract full-scale token-level DINOv2 embeddings for COCO 118K + Flickr30k.
 
-Saves chunks locally to data/embeddings/token_full/ on local SSD.
-Each chunk: (10000, 257, 768) float16 — ~3.7GB per chunk, ~44GB total.
+Saves to data/embeddings/all_tokens/ on local SSD.
+COCO chunks: (10000, 257, 768) float16 — ~3.7GB per chunk, ~44GB total.
 Last chunk is smaller (8287 samples).
+Flickr30k: (31783, 257, 768) float16 — single file, ~12GB.
 
-Text: symlinks existing CLS text embeddings (already float32, 347MB).
+Text: copies existing CLS text embeddings from data/embeddings/cls/.
 
 Usage:
-    PYTHONPATH=/home/shiwon/bridge-anchors python scripts/extraction/extract_token_embeddings_full.py
+    python scripts/extraction/extract_token_embeddings_full.py
 """
 
 from __future__ import annotations
@@ -30,11 +31,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-OUT_DIR = PROJECT_ROOT / "data" / "embeddings" / "token_full"  # LOCAL SSD
+OUT_DIR = PROJECT_ROOT / "data" / "embeddings" / "all_tokens"
+CLS_DIR = PROJECT_ROOT / "data" / "embeddings" / "cls"
 
 CHUNK_SIZE = 10000
 TOTAL_SAMPLES = 118287
 NUM_CHUNKS = (TOTAL_SAMPLES + CHUNK_SIZE - 1) // CHUNK_SIZE  # 12
+
+PILOT_SEED = 42
+PILOT_N = 10000
 
 
 def load_dinov2(device: torch.device) -> torch.nn.Module:
@@ -49,7 +54,7 @@ def extract_chunk_tokens(
     model: torch.nn.Module,
     dataset,
     device: torch.device,
-    batch_size: int = 48,
+    batch_size: int = 64,
 ) -> torch.Tensor:
     """Extract all tokens (CLS + patches) from DINOv2. Returns float16."""
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
@@ -71,15 +76,21 @@ def extract_chunk_tokens(
 
 
 def main() -> None:
-    from src.data.extract_embeddings import get_image_transform, ImageListDataset
+    from src.data.extract_embeddings import (
+        get_image_transform, ImageListDataset, _load_flickr30k_annotations,
+    )
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info("Device: %s", device)
-    logger.info("Output dir: %s (LOCAL SSD, float16)", OUT_DIR)
-    logger.info("Expected total: ~%.1f GB", TOTAL_SAMPLES * 257 * 768 * 2 / 1e9)
+    logger.info("Output dir: %s (float16)", OUT_DIR)
+    logger.info("Expected COCO total: ~%.1f GB", TOTAL_SAMPLES * 257 * 768 * 2 / 1e9)
 
-    # Load COCO annotations — skip per-file exists() for speed
+    # ── COCO 118K chunked extraction ──
+    logger.info("=" * 60)
+    logger.info("COCO train 118K — chunked token extraction")
+    logger.info("=" * 60)
+
     ann_file = PROJECT_ROOT / "data" / "datasets" / "coco" / "annotations" / "captions_train2017.json"
     img_dir = PROJECT_ROOT / "data" / "datasets" / "coco" / "train2017"
 
@@ -130,22 +141,22 @@ def main() -> None:
                     chunk_idx, NUM_CHUNKS - 1, start, end, len(chunk_paths))
 
         ds = ImageListDataset(chunk_paths, transform)
-        chunk_tokens = extract_chunk_tokens(dinov2, ds, device, batch_size=48)
+        chunk_tokens = extract_chunk_tokens(dinov2, ds, device, batch_size=64)
 
         torch.save(chunk_tokens, chunk_path)
         sz = chunk_path.stat().st_size
         total_bytes += sz
         elapsed = time.time() - t_start
 
-        logger.info("  → %s, %.2f GB chunk, %.1f GB total, %ds elapsed",
-                    tuple(chunk_tokens.shape), sz / 1e9, total_bytes / 1e9, elapsed)
+        logger.info("  Chunk %d/%d done, %.2f GB saved, elapsed: %.1f min",
+                    chunk_idx + 1, NUM_CHUNKS, total_bytes / 1e9, elapsed / 60)
 
         del chunk_tokens, ds
         torch.cuda.empty_cache()
 
-    total_time = time.time() - t_start
+    coco_time = time.time() - t_start
 
-    # Save metadata
+    # Save COCO chunk metadata
     metadata = {
         "num_chunks": NUM_CHUNKS,
         "chunk_size": CHUNK_SIZE,
@@ -166,24 +177,75 @@ def main() -> None:
             "num_samples": end - start,
         })
 
-    with open(OUT_DIR / "coco_train_chunk_metadata.json", "w") as f:
+    with open(OUT_DIR / "chunk_metadata.json", "w") as f:
         json.dump(metadata, f, indent=2)
+    logger.info("Saved chunk_metadata.json")
 
-    # Symlink text embeddings (reuse existing CLS)
-    txt_link = OUT_DIR / "coco_train_txt.pt"
-    if not txt_link.exists():
-        txt_src = PROJECT_ROOT / "data" / "embeddings" / "coco_train_txt.pt"
-        txt_link.symlink_to(txt_src.resolve())
-        logger.info("Symlinked text embeddings: %s", txt_link)
-
-    # Verification
+    # ── Flickr30k test token extraction ──
     logger.info("=" * 60)
-    logger.info("DONE. %d chunks, %.1f GB, %d seconds (%.1f min).",
-                NUM_CHUNKS, total_bytes / 1e9, total_time, total_time / 60)
+    logger.info("Flickr30k test — full token extraction")
+    logger.info("=" * 60)
+
+    flickr_img_path = OUT_DIR / "flickr30k_test_img.pt"
+    if flickr_img_path.exists():
+        logger.info("Already exists: %s", flickr_img_path)
+    else:
+        image_paths_f, _ = _load_flickr30k_annotations()
+        logger.info("Extracting DINOv2 tokens for %d Flickr30k images...", len(image_paths_f))
+        t_flickr = time.time()
+        ds_f = ImageListDataset(image_paths_f, transform)
+        flickr_tokens = extract_chunk_tokens(dinov2, ds_f, device, batch_size=64)
+        torch.save(flickr_tokens, flickr_img_path)
+        flickr_sz = flickr_img_path.stat().st_size
+        flickr_time = time.time() - t_flickr
+        logger.info("  Flickr30k done: %s, %.2f GB, %.1f min",
+                    tuple(flickr_tokens.shape), flickr_sz / 1e9, flickr_time / 60)
+        total_bytes += flickr_sz
+        del flickr_tokens
+
+    # ── Copy text embeddings from cls/ ──
+    logger.info("=" * 60)
+    logger.info("Copying text embeddings from cls/")
+    logger.info("=" * 60)
+
+    import shutil
+    for name in ["coco_train_txt.pt", "flickr30k_test_txt.pt"]:
+        dst = OUT_DIR / name
+        src = CLS_DIR / name
+        if dst.exists():
+            logger.info("Already exists: %s", dst)
+        elif src.exists():
+            shutil.copy2(src, dst)
+            logger.info("Copied %s → %s", src.name, dst)
+        else:
+            logger.warning("Source not found: %s", src)
+
+    # ── Save pilot 10K indices for reference ──
+    gen = torch.Generator().manual_seed(PILOT_SEED)
+    pilot_perm = torch.randperm(TOTAL_SAMPLES, generator=gen)
+    pilot_indices = pilot_perm[:PILOT_N]
+    torch.save(pilot_indices, OUT_DIR / "pilot_10k_indices.pt")
+    logger.info("Saved pilot_10k_indices.pt (%d indices, seed=%d)", PILOT_N, PILOT_SEED)
+
+    # ── Final verification ──
+    total_time = time.time() - t_start
+    logger.info("=" * 60)
+    logger.info("ALL DONE.")
+    logger.info("  COCO chunks: %d, %.1f GB, %.1f min",
+                NUM_CHUNKS, sum(
+                    (OUT_DIR / f"coco_train_chunk_{i:02d}_img.pt").stat().st_size
+                    for i in range(NUM_CHUNKS)
+                ) / 1e9, coco_time / 60)
+    logger.info("  Total time: %.1f min", total_time / 60)
+
     x = torch.load(OUT_DIR / "coco_train_chunk_00_img.pt", weights_only=True)
-    logger.info("Verify chunk_00: shape=%s, dtype=%s", tuple(x.shape), x.dtype)
+    logger.info("  Verify chunk_00: shape=%s, dtype=%s", tuple(x.shape), x.dtype)
     assert x.shape == (CHUNK_SIZE, 257, 768)
     assert x.dtype == torch.float16
+
+    logger.info("Files in %s:", OUT_DIR)
+    for f in sorted(OUT_DIR.iterdir()):
+        logger.info("  %s (%.2f GB)", f.name, f.stat().st_size / 1e9)
 
 
 if __name__ == "__main__":

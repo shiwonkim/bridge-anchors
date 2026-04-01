@@ -25,15 +25,15 @@ training:
 
 data:
   dataset: coco
-  img_emb_path: data/embeddings/coco_train_img.pt
-  txt_emb_path: data/embeddings/coco_train_txt.pt
+  img_emb_path: data/embeddings/cls/coco_train_img.pt
+  txt_emb_path: data/embeddings/cls/coco_train_txt.pt
   num_samples: null
 
 eval:
-  flickr_img_emb_path: data/embeddings/flickr30k_test_img.pt
-  flickr_txt_emb_path: data/embeddings/flickr30k_test_txt.pt
-  imagenet_img_emb_path: data/embeddings/imagenet_val_img.pt
-  imagenet_txt_emb_path: data/embeddings/imagenet_val_txt.pt
+  flickr_img_emb_path: data/embeddings/cls/flickr30k_test_img.pt
+  flickr_txt_emb_path: data/embeddings/cls/flickr30k_test_txt.pt
+  imagenet_img_emb_path: data/embeddings/cls/imagenet_val_img.pt
+  imagenet_txt_emb_path: data/embeddings/cls/imagenet_val_txt.pt
   eval_every: 1
 
 logging:

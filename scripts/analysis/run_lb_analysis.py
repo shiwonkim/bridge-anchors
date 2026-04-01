@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 EXP_DIR = PROJECT_ROOT / "experiments" / "exp_step1_lb_loss"
 
-COCO_IMG_EMB = PROJECT_ROOT / "data/embeddings/coco_train_img.pt"
-COCO_TXT_EMB = PROJECT_ROOT / "data/embeddings/coco_train_txt.pt"
+COCO_IMG_EMB = PROJECT_ROOT / "data/embeddings/cls/coco_train_img.pt"
+COCO_TXT_EMB = PROJECT_ROOT / "data/embeddings/cls/coco_train_txt.pt"
 CAPTIONS_JSON = PROJECT_ROOT / "data/datasets/coco/annotations/captions_train2017.json"
 INSTANCES_JSON = PROJECT_ROOT / "data/datasets/coco/annotations/instances_train2017.json"
 

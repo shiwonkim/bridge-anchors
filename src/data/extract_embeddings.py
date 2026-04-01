@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data" / "datasets"
-EMB_DIR = PROJECT_ROOT / "data" / "embeddings"
+EMB_DIR = PROJECT_ROOT / "data" / "embeddings" / "cls"
 
 DINOV2_DIM = 768
 TEXT_DIM = 768

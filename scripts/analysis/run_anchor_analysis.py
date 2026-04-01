@@ -38,8 +38,8 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Paths ──
 CKPT_PATH = PROJECT_ROOT / "results/checkpoints/exp_b_k128_s42/best.pt"
-COCO_IMG_EMB = PROJECT_ROOT / "data/embeddings/coco_train_img.pt"
-COCO_TXT_EMB = PROJECT_ROOT / "data/embeddings/coco_train_txt.pt"
+COCO_IMG_EMB = PROJECT_ROOT / "data/embeddings/cls/coco_train_img.pt"
+COCO_TXT_EMB = PROJECT_ROOT / "data/embeddings/cls/coco_train_txt.pt"
 CAPTIONS_JSON = PROJECT_ROOT / "data/datasets/coco/annotations/captions_train2017.json"
 INSTANCES_JSON = PROJECT_ROOT / "data/datasets/coco/annotations/instances_train2017.json"
 

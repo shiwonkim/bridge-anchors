@@ -28,6 +28,7 @@ def evaluate_retrieval(
     txt_embs: torch.Tensor,
     ks: tuple[int, ...] = (1, 5, 10),
     batch_size: int = 0,
+    txt_mask: torch.Tensor | None = None,
 ) -> dict[str, float]:
     """Compute image-text retrieval recall metrics.
 
@@ -37,13 +38,15 @@ def evaluate_retrieval(
     Args:
         model: Alignment model with
             ``forward(img_emb, txt_emb) -> (b_img, b_txt)``.
-        img_embs: (N, dim_img) raw image embeddings.
-        txt_embs: (N, dim_txt) raw text embeddings.
+        img_embs: (N, dim_img) or (N, T, dim_img) image embeddings.
+        txt_embs: (N, dim_txt) or (N, S, dim_txt) text embeddings.
         ks: Recall cutoffs to report.
         batch_size: If > 0, compute bridged representations in chunks of
             this size to limit GPU memory.  The similarity matrix is still
             computed on the full set.  Set to 0 (default) to process
             everything in one shot.
+        txt_mask: (N, S) attention mask for text tokens.  Required when
+            txt_embs is 3D.
 
     Returns:
         Dict with keys ``i2t_r1``, ``i2t_r5``, ``i2t_r10``,
@@ -54,7 +57,8 @@ def evaluate_retrieval(
     device = get_model_device(model)
 
     # --- Compute bridged representations ---
-    b_img, b_txt = _bridge_batched(model, img_embs, txt_embs, device, batch_size)
+    b_img, b_txt = _bridge_batched(model, img_embs, txt_embs, device, batch_size,
+                                   txt_mask=txt_mask)
 
     # --- Similarity matrix (on CPU to avoid OOM for large N) ---
     # Both outputs are already L2-normalised, so dot product = cosine sim.
@@ -150,6 +154,7 @@ def _bridge_batched(
     txt_embs: torch.Tensor,
     device: torch.device,
     batch_size: int,
+    txt_mask: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Compute bridged representations, optionally in batches.
 
@@ -161,15 +166,21 @@ def _bridge_batched(
     if batch_size <= 0 or batch_size >= n:
         img_embs = img_embs.to(device)
         txt_embs = txt_embs.to(device)
+        if txt_mask is not None:
+            return model(img_embs, txt_embs, txt_mask=txt_mask.to(device))
         return model(img_embs, txt_embs)
 
     b_img_parts: list[torch.Tensor] = []
     b_txt_parts: list[torch.Tensor] = []
     for start in range(0, n, batch_size):
         end = min(start + batch_size, n)
+        kwargs = {}
+        if txt_mask is not None:
+            kwargs["txt_mask"] = txt_mask[start:end].to(device)
         bi, bt = model(
             img_embs[start:end].to(device),
             txt_embs[start:end].to(device),
+            **kwargs,
         )
         b_img_parts.append(bi)
         b_txt_parts.append(bt)
@@ -190,10 +201,10 @@ def main() -> None:
     parser.add_argument("--checkpoint", type=str, required=True,
                         help="Path to model checkpoint.")
     parser.add_argument("--flickr-img", type=str,
-                        default="data/embeddings/flickr30k_test_img.pt",
+                        default="data/embeddings/cls/flickr30k_test_img.pt",
                         help="Path to Flickr30k image embeddings.")
     parser.add_argument("--flickr-txt", type=str,
-                        default="data/embeddings/flickr30k_test_txt.pt",
+                        default="data/embeddings/cls/flickr30k_test_txt.pt",
                         help="Path to Flickr30k text embeddings.")
     parser.add_argument("--batch-size", type=int, default=0,
                         help="Batch size for bridging (0 = all at once).")

@@ -1,10 +1,14 @@
 """Baseline alignment models for comparison with Bridge Anchors.
 
 All models implement the same interface:
-    forward(img_emb, txt_emb) -> (b_img, b_txt)
+    forward(img_emb, txt_emb, txt_mask=None) -> (b_img, b_txt)
 
 where b_img and b_txt are L2-normalised representations that can be
 compared via cosine similarity.
+
+Token-level support: when input is 3D (B, S, D), models apply their core
+operation per-token then mean-pool to get (B, D). Text attention masks are
+used for masked mean pooling of variable-length text sequences.
 """
 
 from __future__ import annotations
@@ -12,6 +16,25 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+def _masked_mean_pool(x: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
+    """Mean-pool a 3D tensor along dim=1, optionally using an attention mask.
+
+    Args:
+        x: (B, S, D) token-level features.
+        mask: (B, S) boolean attention mask, or None (all tokens valid).
+
+    Returns:
+        (B, D) mean-pooled features.
+    """
+    if mask is None:
+        return x.mean(dim=1)
+    # mask: (B, S) -> (B, S, 1) for broadcasting
+    mask_f = mask.unsqueeze(-1).float()  # (B, S, 1)
+    summed = (x * mask_f).sum(dim=1)     # (B, D)
+    counts = mask_f.sum(dim=1).clamp(min=1)  # (B, 1)
+    return summed / counts
 
 
 class LinearProjection(nn.Module):
@@ -34,20 +57,36 @@ class LinearProjection(nn.Module):
         self,
         img_emb: torch.Tensor,
         txt_emb: torch.Tensor,
+        txt_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Project image embeddings and normalise both modalities.
 
+        Supports both CLS (2D) and token-level (3D) inputs. When 3D,
+        applies projection per-token then mean-pools.
+
         Args:
-            img_emb: (B, dim_img) image embeddings.
-            txt_emb: (B, dim_txt) text embeddings.
+            img_emb: (B, dim_img) or (B, S_img, dim_img) image embeddings.
+            txt_emb: (B, dim_txt) or (B, S_txt, dim_txt) text embeddings.
+            txt_mask: (B, S_txt) boolean attention mask for text tokens.
 
         Returns:
             Tuple of (proj_img, norm_txt), each (B, dim_txt) L2-normalised.
         """
-        # Project image embeddings into text space
-        proj_img = self.proj(img_emb)         # (B, dim_txt)
-        proj_img = F.normalize(proj_img, dim=-1)  # (B, dim_txt)
-        norm_txt = F.normalize(txt_emb, dim=-1)   # (B, dim_txt)
+        # Image: project, pool if token-level
+        if img_emb.ndim == 3:
+            proj_img = self.proj(img_emb)                    # (B, S, dim_txt)
+            proj_img = _masked_mean_pool(proj_img, None)     # (B, dim_txt)
+        else:
+            proj_img = self.proj(img_emb)                    # (B, dim_txt)
+        proj_img = F.normalize(proj_img, dim=-1)
+
+        # Text: just pool if token-level (no projection on text side)
+        if txt_emb.ndim == 3:
+            norm_txt = _masked_mean_pool(txt_emb, txt_mask)  # (B, dim_txt)
+        else:
+            norm_txt = txt_emb
+        norm_txt = F.normalize(norm_txt, dim=-1)
+
         return proj_img, norm_txt
 
     def extra_repr(self) -> str:
@@ -83,19 +122,35 @@ class MLPProjection(nn.Module):
         self,
         img_emb: torch.Tensor,
         txt_emb: torch.Tensor,
+        txt_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Project image embeddings through MLP and normalise both modalities.
 
+        Supports both CLS (2D) and token-level (3D) inputs.
+
         Args:
-            img_emb: (B, dim_img) image embeddings.
-            txt_emb: (B, dim_txt) text embeddings.
+            img_emb: (B, dim_img) or (B, S_img, dim_img) image embeddings.
+            txt_emb: (B, dim_txt) or (B, S_txt, dim_txt) text embeddings.
+            txt_mask: (B, S_txt) boolean attention mask for text tokens.
 
         Returns:
             Tuple of (proj_img, norm_txt), each (B, dim_txt) L2-normalised.
         """
-        proj_img = self.mlp(img_emb)              # (B, dim_txt)
-        proj_img = F.normalize(proj_img, dim=-1)   # (B, dim_txt)
-        norm_txt = F.normalize(txt_emb, dim=-1)    # (B, dim_txt)
+        # Image: MLP per-token, pool if token-level
+        if img_emb.ndim == 3:
+            proj_img = self.mlp(img_emb)                     # (B, S, dim_txt)
+            proj_img = _masked_mean_pool(proj_img, None)     # (B, dim_txt)
+        else:
+            proj_img = self.mlp(img_emb)                     # (B, dim_txt)
+        proj_img = F.normalize(proj_img, dim=-1)
+
+        # Text: just pool if token-level
+        if txt_emb.ndim == 3:
+            norm_txt = _masked_mean_pool(txt_emb, txt_mask)  # (B, dim_txt)
+        else:
+            norm_txt = txt_emb
+        norm_txt = F.normalize(norm_txt, dim=-1)
+
         return proj_img, norm_txt
 
     def extra_repr(self) -> str:
@@ -147,30 +202,41 @@ class FixedRelativeRep(nn.Module):
         self,
         img_emb: torch.Tensor,
         txt_emb: torch.Tensor,
+        txt_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute fixed relative representations.
 
         Same cosine-similarity computation as BridgeAnchorAligner, but
-        anchors are frozen buffers (no gradient).
+        anchors are frozen buffers (no gradient). Supports token-level (3D)
+        inputs: computes per-token anchor similarities then mean-pools.
 
         Args:
-            img_emb: (B, dim_img) image embeddings.
-            txt_emb: (B, dim_txt) text embeddings.
+            img_emb: (B, dim_img) or (B, S_img, dim_img) image embeddings.
+            txt_emb: (B, dim_txt) or (B, S_txt, dim_txt) text embeddings.
+            txt_mask: (B, S_txt) boolean attention mask for text tokens.
 
         Returns:
             Tuple of (b_img, b_txt), each (B, K) L2-normalised.
         """
-        # L2-normalise inputs
-        img_emb = F.normalize(img_emb, dim=-1)  # (B, dim_img)
-        txt_emb = F.normalize(txt_emb, dim=-1)  # (B, dim_txt)
+        # Image: per-token anchor sims, then pool if 3D
+        if img_emb.ndim == 3:
+            img_emb = F.normalize(img_emb, dim=-1)          # (B, S, dim_img)
+            b_img = img_emb @ self.anchors_img.T             # (B, S, K)
+            b_img = _masked_mean_pool(b_img, None)           # (B, K)
+        else:
+            img_emb = F.normalize(img_emb, dim=-1)           # (B, dim_img)
+            b_img = img_emb @ self.anchors_img.T             # (B, K)
+        b_img = F.normalize(b_img, dim=-1)
 
-        # Cosine similarities to fixed anchors
-        b_img = img_emb @ self.anchors_img.T  # (B, K)
-        b_txt = txt_emb @ self.anchors_txt.T  # (B, K)
-
-        # L2-normalise bridged representations
-        b_img = F.normalize(b_img, dim=-1)  # (B, K)
-        b_txt = F.normalize(b_txt, dim=-1)  # (B, K)
+        # Text: per-token anchor sims, then masked pool if 3D
+        if txt_emb.ndim == 3:
+            txt_emb = F.normalize(txt_emb, dim=-1)           # (B, S, dim_txt)
+            b_txt = txt_emb @ self.anchors_txt.T             # (B, S, K)
+            b_txt = _masked_mean_pool(b_txt, txt_mask)       # (B, K)
+        else:
+            txt_emb = F.normalize(txt_emb, dim=-1)           # (B, dim_txt)
+            b_txt = txt_emb @ self.anchors_txt.T             # (B, K)
+        b_txt = F.normalize(b_txt, dim=-1)
 
         return b_img, b_txt
 

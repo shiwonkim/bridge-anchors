@@ -44,11 +44,11 @@ def main() -> None:
         # Create a temporary config with patched embedding paths
         cfg = base_cfg.copy()
         cfg["data"] = dict(base_cfg["data"])
-        cfg["data"]["img_emb_path"] = f"data/embeddings/coco_train_img_dino_block{blk}.pt"
-        cfg["data"]["txt_emb_path"] = f"data/embeddings/coco_train_txt_mpnet_layer{lay}.pt"
+        cfg["data"]["img_emb_path"] = f"data/embeddings/cls/coco_train_img_dino_block{blk}.pt"
+        cfg["data"]["txt_emb_path"] = f"data/embeddings/cls/coco_train_txt_mpnet_layer{lay}.pt"
         cfg["eval"] = dict(base_cfg["eval"])
-        cfg["eval"]["flickr_img_emb_path"] = f"data/embeddings/flickr30k_test_img_dino_block{blk}.pt"
-        cfg["eval"]["flickr_txt_emb_path"] = f"data/embeddings/flickr30k_test_txt_mpnet_layer{lay}.pt"
+        cfg["eval"]["flickr_img_emb_path"] = f"data/embeddings/cls/flickr30k_test_img_dino_block{blk}.pt"
+        cfg["eval"]["flickr_txt_emb_path"] = f"data/embeddings/cls/flickr30k_test_txt_mpnet_layer{lay}.pt"
 
         tmp_config = exp_dir / f"config_{name}.yaml"
         with open(tmp_config, "w") as f:

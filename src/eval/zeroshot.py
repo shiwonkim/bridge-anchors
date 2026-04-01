@@ -224,13 +224,13 @@ def main() -> None:
     parser.add_argument("--checkpoint", type=str, required=True,
                         help="Path to model checkpoint.")
     parser.add_argument("--imagenet-img", type=str,
-                        default="data/embeddings/imagenet_val_img.pt",
+                        default="data/embeddings/cls/imagenet_val_img.pt",
                         help="Path to ImageNet val image embeddings.")
     parser.add_argument("--imagenet-txt", type=str,
-                        default="data/embeddings/imagenet_val_txt.pt",
+                        default="data/embeddings/cls/imagenet_val_txt.pt",
                         help="Path to ImageNet class text embeddings.")
     parser.add_argument("--imagenet-labels", type=str,
-                        default="data/embeddings/imagenet_val_labels.pt",
+                        default="data/embeddings/cls/imagenet_val_labels.pt",
                         help="Path to ImageNet val labels.")
     parser.add_argument("--batch-size", type=int, default=1024,
                         help="Batch size for image bridging.")

@@ -61,7 +61,7 @@ echo "Launching interactive container..."
 echo "  (Ctrl+D or 'exit' to leave)"
 echo ""
 
-docker run --gpus all -it --shm-size=16g \
+docker run --rm --gpus all -it --shm-size=16g \
     --name bridge-anchors \
     -v "${CODE_DIR}":/workspace/bridge-anchors \
     -v "${DATA_DIR}":/workspace/bridge-anchors/data \

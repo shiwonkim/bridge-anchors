@@ -28,6 +28,7 @@ from src.data.eval_datasets import Flickr30kEmbeddings
 from src.eval.retrieval import evaluate_retrieval
 from src.models.baselines import FixedRelativeRep, LinearProjection, MLPProjection
 from src.models.bridge_anchors import BridgeAnchorAligner
+from src.models.freeze_align import FreezeAlignProjector
 from src.models.spectral_align import SpectralAligner
 from src.models.token_bridge_anchors import TokenBridgeAnchorAligner
 from src.models.losses import (
@@ -165,6 +166,9 @@ def build_model(
             dim_txt=dim_txt,
             hidden_dim=cfg["baseline"]["mlp_hidden_dim"],
         )
+
+    elif model_name == "freeze_align":
+        model = FreezeAlignProjector(dim_img=dim_img, dim_txt=dim_txt)
 
     elif model_name == "spectral_aligner":
         num_anchors = cfg["model"]["num_anchors"]  # reuse K setting
@@ -565,7 +569,9 @@ def train_one_epoch(
         else:
             b_img, b_txt = model(img_emb, txt_emb)
 
-        loss = info_nce_loss(b_img, b_txt, temperature=temperature)
+        # Use model's learnable temperature if available (e.g. FreezeAlign)
+        effective_temp = model.temp if hasattr(model, "temp") else temperature
+        loss = info_nce_loss(b_img, b_txt, temperature=effective_temp)
 
         ortho_loss_val = 0.0
         if ortho_lambda > 0 and has_anchors:
@@ -637,13 +643,19 @@ def save_checkpoint(
 
 
 def _run_token_level(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
-    """Completely independent token-level BridgeAnchors training path.
+    """Token-level training path for BA and FreezeAlign.
 
-    Supports two data modes:
-    - Pilot (default): loads 10K subset from coco_train_10k_img.pt
-    - Chunked (--chunked): streams 118K from chunked files on NAS
+    Activated when --img-input tokens or --txt-input tokens is set.
+    Supports all 4 combinations of {cls, tokens} × {cls, tokens} for
+    image and text inputs, and both BA and FreezeAlign models.
+
+    Data loading:
+        --img-input tokens: chunked image tokens from all_tokens/
+        --img-input cls: CLS image embeddings from cls/
+        --txt-input tokens: text token embeddings + masks from all_tokens/
+        --txt-input cls: CLS text embeddings from all_tokens/ (or cls/)
     """
-    from torch.utils.data import TensorDataset
+    from src.data.chunked_token_dataset import ChunkedTokenDataset
 
     seed = cfg["training"]["seed"]
     seed_everything(seed)
@@ -654,37 +666,62 @@ def _run_token_level(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
         datefmt="%H:%M:%S",
     )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    chunked = getattr(args, "chunked", False)
-    logger.info("TOKEN-LEVEL mode | %s | Device: %s | Seed: %d",
-                "CHUNKED (118K)" if chunked else "PILOT (10K)", device, seed)
 
-    token_dir = PROJECT_ROOT / "data" / "embeddings" / "token"
+    img_input = getattr(args, "img_input", "tokens")
+    txt_input = getattr(args, "txt_input", "cls")
+    model_name = cfg["model"]["name"]
+    chunked = getattr(args, "chunked", False)
+
+    logger.info("TOKEN-LEVEL mode | img=%s txt=%s model=%s | Device: %s | Seed: %d",
+                img_input, txt_input, model_name, device, seed)
+
+    token_dir = PROJECT_ROOT / "data" / "embeddings" / "all_tokens"
+    cls_dir = PROJECT_ROOT / "data" / "embeddings" / "cls"
     num_anchors = cfg["model"]["num_anchors"]
     token_pool = args.token_pool
-    batch_size = min(cfg["training"]["batch_size"], 128)
+    batch_size = cfg["training"]["batch_size"]
+    txt_token_level = (txt_input == "tokens")
 
     # --- Load Flickr30k eval data ---
-    flickr_img = torch.load(token_dir / "flickr30k_img.pt", weights_only=True)
-    flickr_txt = torch.load(token_dir / "flickr30k_txt.pt", weights_only=True)
+    # Image: tokens if img_input=tokens, else CLS (cast to float32)
+    if img_input == "tokens":
+        flickr_img = torch.load(token_dir / "flickr30k_test_img.pt", weights_only=True).float()
+    else:
+        flickr_img = torch.load(cls_dir / "flickr30k_test_img.pt", weights_only=True).float()
+    # Text: tokens+mask if txt_input=tokens, else CLS
+    if txt_input == "tokens":
+        flickr_txt = torch.load(token_dir / "flickr30k_test_txt_tokens.pt", weights_only=True).float()
+        flickr_txt_mask = torch.load(token_dir / "flickr30k_test_txt_mask.pt", weights_only=True)
+    else:
+        flickr_txt = torch.load(token_dir / "flickr30k_test_txt.pt", weights_only=True).float()
+        flickr_txt_mask = None
     logger.info("Flickr30k: img %s, txt %s", tuple(flickr_img.shape), tuple(flickr_txt.shape))
 
     # --- Load training data ---
-    if chunked:
-        from src.data.chunked_token_dataset import ChunkedTokenDataset
-        chunk_dir = PROJECT_ROOT / "data" / "embeddings" / "token_full"
-        txt_path = chunk_dir / "coco_train_txt.pt"
+    if img_input == "tokens" and chunked:
+        txt_path = token_dir / "coco_train_txt.pt"
         train_chunked = ChunkedTokenDataset(
-            chunk_dir=chunk_dir, text_emb_path=txt_path,
+            chunk_dir=token_dir, text_emb_path=txt_path,
             batch_size=batch_size, seed=seed, split="train",
+            text_token_level=txt_token_level,
         )
-        train_loader = None  # will use epoch_iterator
+        train_loader = None
         steps_per_epoch = train_chunked.n_batches_approx
-        logger.info("Chunked training: ~%d batches/epoch (bs=%d)",
-                    steps_per_epoch, batch_size)
+        logger.info("Chunked training: ~%d batches/epoch (bs=%d, txt_tokens=%s)",
+                    steps_per_epoch, batch_size, txt_token_level)
     else:
-        train_img = torch.load(token_dir / "coco_train_10k_img.pt", weights_only=True)
-        train_txt = torch.load(token_dir / "coco_train_10k_txt.pt", weights_only=True)
-        logger.info("Pilot train: img %s, txt %s", tuple(train_img.shape), tuple(train_txt.shape))
+        # Non-chunked: load everything into memory
+        from torch.utils.data import TensorDataset
+
+        if img_input == "tokens":
+            # Load pilot 10K for non-chunked token mode
+            train_img = torch.load(token_dir / "coco_train_10k_img.pt", weights_only=True)
+            train_txt_cls = torch.load(token_dir / "coco_train_10k_txt.pt", weights_only=True)
+        else:
+            train_img = torch.load(cls_dir / "coco_train_img.pt", weights_only=True)
+            train_txt_cls = torch.load(cls_dir / "coco_train_txt.pt", weights_only=True)
+
+        logger.info("Train: img %s, txt %s", tuple(train_img.shape), tuple(train_txt_cls.shape))
 
         n = train_img.shape[0]
         n_val = max(1, int(n * 0.05))
@@ -692,25 +729,69 @@ def _run_token_level(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
         perm = torch.randperm(n, generator=gen)
         train_idx = perm[n_val:]
 
-        train_ds = TensorDataset(train_img[train_idx], train_txt[train_idx])
+        train_ds = TensorDataset(train_img[train_idx], train_txt_cls[train_idx])
         train_loader = DataLoader(
             train_ds, batch_size=batch_size, shuffle=True,
             num_workers=0, pin_memory=True, drop_last=True,
             generator=torch.Generator().manual_seed(seed),
         )
+        train_chunked = None
         steps_per_epoch = len(train_loader)
-        logger.info("Pilot training: %d pairs (%d batches, bs=%d)",
+        logger.info("Training: %d pairs (%d batches, bs=%d)",
                     len(train_ds), steps_per_epoch, batch_size)
 
     # --- Model ---
-    model = TokenBridgeAnchorAligner(
-        dim_img=768, dim_txt=768,
-        num_anchors=num_anchors,
-        token_pool=token_pool,
-    ).to(device)
+    if model_name == "freeze_align":
+        model = FreezeAlignProjector(dim_img=768, dim_txt=768).to(device)
+    elif model_name in ("bridge_anchors", "token_bridge_anchors"):
+        model = TokenBridgeAnchorAligner(
+            dim_img=768, dim_txt=768,
+            num_anchors=num_anchors,
+            token_pool=token_pool,
+        ).to(device)
+    elif model_name == "linear_projection":
+        model = LinearProjection(dim_img=768, dim_txt=768).to(device)
+    elif model_name == "mlp_projection":
+        hidden_dim = cfg["baseline"]["mlp_hidden_dim"]
+        model = MLPProjection(dim_img=768, dim_txt=768, hidden_dim=hidden_dim).to(device)
+    elif model_name == "fixed_relative_rep":
+        # Load CLS text embeddings for anchor selection (same as CLS path)
+        cls_dir = PROJECT_ROOT / "data" / "embeddings" / "cls"
+        img_data = torch.load(cls_dir / "coco_train_img.pt", weights_only=True)
+        txt_data = torch.load(cls_dir / "coco_train_txt.pt", weights_only=True)
+        gen = torch.Generator().manual_seed(seed)
+        idx = torch.randperm(img_data.shape[0], generator=gen)[:num_anchors]
+        model = FixedRelativeRep(
+            anchors_img=img_data[idx],
+            anchors_txt=txt_data[idx],
+        ).to(device)
+        del img_data, txt_data
+    else:
+        raise ValueError(f"Model '{model_name}' not supported in token-level mode. "
+                        f"Use 'bridge_anchors', 'freeze_align', 'linear_projection', "
+                        f"'mlp_projection', or 'fixed_relative_rep'.")
+
     n_params = sum(p.numel() for p in model.parameters())
-    logger.info("Model: TokenBridgeAnchorAligner | K=%d pool=%s | params=%s",
-                num_anchors, token_pool, f"{n_params:,}")
+    logger.info("Model: %s | params=%s | img=%s txt=%s",
+                type(model).__name__, f"{n_params:,}", img_input, txt_input)
+
+    # FixedRelativeRep has no learnable params — eval-only
+    if model_name == "fixed_relative_rep":
+        logger.info("FixedRelativeRep has no trainable parameters. Running evaluation only.")
+        model.eval()
+        with torch.no_grad():
+            if flickr_txt_mask is not None:
+                metrics = evaluate_retrieval(model, flickr_img, flickr_txt,
+                                            batch_size=64, txt_mask=flickr_txt_mask)
+            else:
+                metrics = evaluate_retrieval(model, flickr_img, flickr_txt,
+                                            batch_size=64)
+        logger.info("R@1=%.1f/%.1f R@5=%.1f/%.1f mR=%.2f",
+                    metrics['i2t_r1'], metrics['t2i_r1'],
+                    metrics['i2t_r5'], metrics['t2i_r5'],
+                    metrics['mean_recall'])
+        logger.info("Training complete. Best mean recall: %.2f", metrics['mean_recall'])
+        return
 
     # --- Optimizer & scheduler ---
     epochs = cfg["training"]["epochs"]
@@ -736,19 +817,38 @@ def _run_token_level(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
         num_batches = 0
 
         # Select data iterator
-        if chunked:
+        if train_chunked is not None:
             data_iter = train_chunked.epoch_iterator(epoch, device=device)
         else:
             data_iter = train_loader
 
-        for batch_img, batch_txt in data_iter:
-            if not chunked:
+        for batch in data_iter:
+            if train_chunked is not None:
+                if txt_token_level:
+                    batch_img, batch_txt, batch_txt_tok, batch_txt_mask = batch
+                else:
+                    batch_img, batch_txt = batch
+                    batch_txt_tok, batch_txt_mask = None, None
+            else:
+                batch_img, batch_txt = batch
                 batch_img = batch_img.to(device, non_blocking=True)
                 batch_txt = batch_txt.to(device, non_blocking=True)
+                batch_txt_tok, batch_txt_mask = None, None
 
             optimizer.zero_grad()
-            b_img, b_txt = model(batch_img, batch_txt)
-            loss = info_nce_loss(b_img, b_txt, temperature=temperature)
+
+            # Select text input based on mode
+            txt_for_model = batch_txt_tok if txt_token_level and batch_txt_tok is not None else batch_txt
+            mask_for_model = batch_txt_mask if txt_token_level else None
+
+            # Forward — models accept optional txt_mask
+            if mask_for_model is not None:
+                b_img, b_txt = model(batch_img, txt_for_model, txt_mask=mask_for_model)
+            else:
+                b_img, b_txt = model(batch_img, txt_for_model)
+
+            effective_temp = model.temp if hasattr(model, "temp") else temperature
+            loss = info_nce_loss(b_img, b_txt, temperature=effective_temp)
             loss.backward()
 
             if grad_clip > 0:
@@ -765,8 +865,12 @@ def _run_token_level(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
         # Flickr eval (batched to avoid OOM with token-level tensors)
         model.eval()
         with torch.no_grad():
-            metrics = evaluate_retrieval(model, flickr_img, flickr_txt,
-                                        batch_size=64)
+            if flickr_txt_mask is not None:
+                metrics = evaluate_retrieval(model, flickr_img, flickr_txt,
+                                            batch_size=64, txt_mask=flickr_txt_mask)
+            else:
+                metrics = evaluate_retrieval(model, flickr_img, flickr_txt,
+                                            batch_size=64)
 
         log_line = (
             f"Epoch {epoch:3d}/{epochs} | loss={avg_loss:.4f} | "
@@ -794,8 +898,15 @@ def main() -> None:
     cfg = load_config(args.config)
     apply_cli_overrides(cfg, args)
 
-    # --- Token-level path (completely independent) ---
+    # --- Translate legacy --token-level flag ---
     if args.token_level:
+        args.img_input = "tokens"
+        if args.txt_input == "cls":  # don't override if user explicitly set
+            args.txt_input = "cls"
+        args.chunked = True
+
+    # --- Token-level path (when either modality uses tokens) ---
+    if args.img_input == "tokens" or args.txt_input == "tokens":
         _run_token_level(args, cfg)
         return
 
@@ -1035,7 +1146,7 @@ def parse_args() -> argparse.Namespace:
     # --- Overrides (all optional — override specific config values) ---
     parser.add_argument(
         "--model", type=str, default=None,
-        choices=["bridge_anchors", "linear_projection", "mlp_projection", "fixed_relative_rep", "spectral_aligner"],
+        choices=["bridge_anchors", "linear_projection", "mlp_projection", "fixed_relative_rep", "spectral_aligner", "freeze_align"],
         help="Model type (overrides config).",
     )
     parser.add_argument(
@@ -1092,15 +1203,28 @@ def parse_args() -> argparse.Namespace:
         "--experiment-name", type=str, default=None,
         help="Experiment name for logging/checkpoints (overrides config).",
     )
-    # --- Token-level BridgeAnchors ---
+    # --- Token-level control ---
     parser.add_argument(
-        "--token-level", action="store_true", default=False,
-        help="Enable token-level BridgeAnchors (loads from data/embeddings/token/).",
+        "--img-input", type=str, default="cls",
+        choices=["cls", "tokens"],
+        help="Image input type: 'cls' for CLS-only (B, 768), "
+             "'tokens' for token-level (B, 257, 768).",
+    )
+    parser.add_argument(
+        "--txt-input", type=str, default="cls",
+        choices=["cls", "tokens"],
+        help="Text input type: 'cls' for CLS-only (B, 768), "
+             "'tokens' for token-level (B, S, 768) with attention mask.",
     )
     parser.add_argument(
         "--token-pool", type=str, default="mean",
         choices=["mean", "max"],
-        help="Token aggregation method for token-level BA.",
+        help="Token aggregation method for token-level inputs.",
+    )
+    # --- Legacy flags (backward compat, prefer --img-input/--txt-input) ---
+    parser.add_argument(
+        "--token-level", action="store_true", default=False,
+        help="(Deprecated) Equivalent to --img-input tokens --txt-input cls --chunked.",
     )
     parser.add_argument(
         "--chunked", action="store_true", default=False,

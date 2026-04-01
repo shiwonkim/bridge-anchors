@@ -63,12 +63,15 @@ class TokenBridgeAnchorAligner(nn.Module):
         self,
         img_emb: torch.Tensor,
         txt_emb: torch.Tensor,
+        txt_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Compute bridged representations.
 
         Args:
             img_emb: (B, T, D) token-level image embeddings, or (B, D) CLS-only.
-            txt_emb: (B, D) text embeddings.
+            txt_emb: (B, D) CLS text embeddings, or (B, S, D) token-level text.
+            txt_mask: (B, S) attention mask for text tokens. Required when
+                      txt_emb is 3D. 1 = valid token, 0 = padding.
 
         Returns:
             Tuple of (b_img, b_txt), each (B, K) L2-normalised.
@@ -92,9 +95,22 @@ class TokenBridgeAnchorAligner(nn.Module):
             img_emb = F.normalize(img_emb, dim=-1)
             raw_img = img_emb @ a_img.T                   # (B, K)
 
-        # --- Text side (always CLS-level) ---
-        txt_emb = F.normalize(txt_emb, dim=-1)            # (B, D)
-        raw_txt = txt_emb @ a_txt.T                       # (B, K)
+        # --- Text side ---
+        if txt_emb.dim() == 3:
+            # Token-level: (B, S, D) — compute per-token anchor sims, then pool
+            if txt_mask is None:
+                raise ValueError("txt_mask required when txt_emb is 3D")
+            txt_emb = F.normalize(txt_emb, dim=-1)        # (B, S, D)
+            sim_txt = txt_emb @ a_txt.T                    # (B, S, K)
+
+            # Attention-masked mean pooling
+            mask_expanded = txt_mask.unsqueeze(-1)          # (B, S, 1)
+            raw_txt = (sim_txt * mask_expanded).sum(dim=1)  # (B, K)
+            raw_txt = raw_txt / txt_mask.sum(dim=1, keepdim=True).clamp(min=1)
+        else:
+            # CLS-only: (B, D)
+            txt_emb = F.normalize(txt_emb, dim=-1)
+            raw_txt = txt_emb @ a_txt.T                     # (B, K)
 
         # L2-normalise bridged representations
         b_img = F.normalize(raw_img, dim=-1)              # (B, K)

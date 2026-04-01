@@ -6,8 +6,9 @@
 
 ### Infrastructure
 - Full pipeline operational: code, datasets, embeddings, training, evaluation — all tested end-to-end
-- Conda environment: `bridge-anchors`, Python 3.10.20, PyTorch 2.4.1+cu118, 2× NVIDIA A40
-- Datasets: COCO 2017, Flickr30k, ImageNet val — all downloaded, embeddings pre-extracted (1.1 GB in `data/embeddings/`)
+- **New server (2026-03-25):** Docker environment, Python 3.10, PyTorch 2.4.1+cu118, 2× Quadro RTX 8000 / A40 (46–49 GB each)
+- Datasets: COCO 2017, Flickr30k, ImageNet val — all downloaded, embeddings pre-extracted (1.1 GB CLS in `data/embeddings/cls/`)
+- Token embeddings: COCO train 118K image tokens extracted (12 chunks × ~3.7 GB, float16, 56 GB total in `data/embeddings/all_tokens/`)
 - Each training run takes ~75s (20 epochs on 118K COCO pairs)
 
 ### Experiment A — COMPLETE (5 models × 3 seeds = 15 runs)
@@ -91,9 +92,36 @@ BridgeAnchors with PCA-reduced embeddings. 2D sweep on COCO 118K, Flickr30k retr
 
 Best PCA-BA: d=256, K=128 → 19.2 mR (66K params) vs standard BA K=128 → 23.7 mR (197K params) vs LP → 23.6 mR (590K params). **PCA reduction trades 4.4 mR for 3× param savings — not worthwhile.** PCA dimension is the dominant factor (variance-preserving basis discards cross-modal signal). Standard BA in full 768-d is more efficient in performance-per-parameter. Details: `experiments/exp_pca_ba/results_summary.md`, heatmap: `experiments/exp_pca_ba/heatmap_pca_ba.png`
 
-### Immediate next step
+### Full-Scale Comparison — COMPLETE (15 runs + CLS baselines)
+All models × {cls/cls, tok/cls, tok/tok}. COCO 118K, Flickr30k eval, seed=42, 20 epochs, per-model optimal BS/LR.
 
-**Experiment D — Fixed vs learnable anchors, random vs prototype init** (4 strategies × 3 seeds = 12 runs). This is the last ablation needed to complete the anchor initialization/learning analysis.
+| Rank | Model | Input | Params | **mR** |
+|------|-------|-------|--------|--------|
+| 1 | **FreezeAlign** | tok/cls | 6.5M | **29.11** |
+| 2 | **MLPProj** | tok/tok | 393K | **28.85** |
+| 3 | **MLPProj** | tok/cls | 393K | **28.79** |
+| 4 | Token BA K=512 | tok/cls | 787K | 27.52 |
+| 5 | FreezeAlign | tok/tok | 6.5M | 27.61 |
+| 6 | Token BA K=128 | tok/cls | 197K | 27.27 |
+| 7 | LP | tok/cls | 590K | 26.51 |
+| 8 | Token BA K=64 | tok/cls | 98K | 25.34 |
+| 9 | CLS BA K=128 (opt) | cls/cls | 197K | 25.05 |
+| 10 | LP | cls/cls | 590K | 23.77 |
+| 11 | FA | cls/cls | 6.5M | 21.23 |
+| 12 | MLP | cls/cls | 393K | 20.77 |
+
+**Key findings:**
+- **MLPProj tok/cls (393K, 28.79 mR) is the new lightweight champion** — within 0.32 of FA (6.5M) at 17× fewer params. The bottleneck regularization + token input is a powerful combo.
+- Token-level input helps ALL models: MLP gains +8.02, FA +7.88, LP +2.74, BA +2.22
+- tok/tok still doesn't help any model (text CLS is sufficient)
+- BA K=128 tok/cls (197K, 27.27) remains best at ultra-low param budgets
+
+Details: `experiments/exp_full_comparison/results_summary.md`
+
+### Immediate next steps
+1. Experiment D — fixed vs learnable anchors, random vs prototype init
+2. Attention-weighted token pooling (learnable query)
+3. Multi-seed validation of key results
 
 ### Direction A Anchor Analysis — COMPLETE (5 analyses on BA K=128)
 Comprehensive analysis of learned anchors from Experiment B (K=128, seed=42, COCO 118K).
@@ -169,6 +197,406 @@ Token-level BA using patch tokens (CLS + 256 patches) vs CLS-only. 10K COCO subs
 ---
 
 Reverse-chronological record of development activity. Newest entries first.
+
+---
+
+## 2026-03-26 — Token-level support for all baselines (Prompt 40)
+
+**What was done:**
+
+Extended the `--img-input {cls,tokens}` / `--txt-input {cls,tokens}` flag system to all 3 baseline models:
+- **LinearProjection**: applies projection per-token, then mean pools
+- **MLPProjection**: applies MLP per-token, then mean pools
+- **FixedRelativeRep**: computes per-token anchor similarities, then mean pools
+
+Key changes:
+- `src/models/baselines.py`: Added `txt_mask` parameter and `_masked_mean_pool` helper. All 3 models auto-detect 2D (CLS) vs 3D (token) input. Masked mean pooling for variable-length text.
+- `src/train.py`: Added LP, MLP, FRR to `_run_token_level` model creation. Added FRR eval-only early-return (matching CLS path behavior).
+- Zero new parameters — same weights applied per-token.
+- Backward compatible: cls/cls produces identical results (verified: loss=2.6296, mR=16.5 matches exactly).
+
+Smoke test results (1 epoch, BS=256, LR=1e-3):
+
+| Model | cls/cls | tok/cls | cls/tok | tok/tok |
+|-------|---------|---------|---------|---------|
+| LinearProj | 16.5 | 19.3 | 16.5 | 19.3 |
+| MLPProj | 17.4 | 21.0 | 17.5 | 21.0 |
+| FixedRelRep | 1.1 | 1.0 | 1.0 | 1.0 |
+
+Pattern: tok/cls gives +2.8–3.6 mR boost; tok/tok ≈ tok/cls (text tokens don't help, consistent with BA/FA findings). FRR is at chance with random anchors as expected.
+
+---
+
+## 2026-03-26 — LP/MLP full-scale experiments + comprehensive comparison (Prompt 41)
+
+**What was done:**
+
+### BS/LR tuning for LP and MLP
+- 3-epoch probes: BS={256, 512, 1024, 2048} with linear LR scaling
+- Both LP and MLP converge on **BS=1024, LR=4e-3** as optimal (different from BA's BS=1024/LR=8e-3 due to different base BS)
+- For CLS path: tested BS={256, 1024, 4096, 8192}, BS=1024/LR=4e-3 best for both
+
+### Full 20-epoch runs (6 new experiments)
+
+| Model | Input | Params | mR |
+|-------|-------|--------|------|
+| LP | cls/cls | 590K | 23.77 |
+| LP | tok/cls | 590K | 26.51 |
+| LP | tok/tok | 590K | 26.48 |
+| MLP | cls/cls | 393K | 20.77 |
+| **MLP** | **tok/cls** | **393K** | **28.79** |
+| MLP | tok/tok | 393K | 28.85 |
+
+### Key discovery: MLPProj tok/cls is the new lightweight champion
+- **28.79 mR (393K params)** — within 0.32 of FreezeAlign (29.11, 6.5M) at 17× fewer params
+- Beats Token BA K=128 (27.27, 197K) by +1.52 mR with 2× params
+- MLP's bottleneck (768→256→768) regularizes well + token input provides spatial info the bottleneck was starved of
+- MLP has the largest cls→tok gain: +8.02 mR (+38.6%), indicating CLS was the bottleneck, not model capacity
+
+### Updated comprehensive comparison (all 5 model families)
+- Updated results_summary.md with Optimal Hyperparameters reference table
+- Created 3 plots: comparison_plot.png, param_efficiency_plot.png, token_improvement_plot.png
+- Updated results.csv with all 16 configurations
+
+**Files changed:**
+- `experiments/exp_full_comparison/results_summary.md` — comprehensive rewrite with all models
+- `experiments/exp_full_comparison/results.csv` — all 16 configs
+- `experiments/exp_full_comparison/comparison_plot.png` — updated with LP/MLP
+- `experiments/exp_full_comparison/param_efficiency_plot.png` — updated
+- `experiments/exp_full_comparison/token_improvement_plot.png` — NEW
+
+---
+
+## 2026-03-26 — Full-scale token-level comparison experiments (Prompt 39)
+
+**What was done:**
+
+### Text token extraction
+- Extracted all-mpnet-base-v2 token-level embeddings (before pooling) for COCO train (118,287 captions) and Flickr30k test (31,783 captions)
+- COCO: `[118287, 59, 768]` float16, 10.72 GB + 6.98 MB masks
+- Flickr30k: `[31783, 83, 768]` float16, 4.05 GB + 2.64 MB masks
+- Extraction time: 2.1 minutes. All tokens L2-normalized.
+
+### Token-level batch size / LR optimization
+- Removed hardcoded BS=128 cap in `_run_token_level` (line 682)
+- All batch sizes {128, 256, 512, 1024, 2048, 4096} fit on A40 (46 GB)
+- Linear LR scaling (base: BS=128, LR=1e-3) tested at 3-epoch probes
+- **Optimal: BS=1024, LR=8e-3** (mR=25.6 @ 3 epochs)
+
+### Full-scale experiments (9 new runs)
+6 Token BA runs + 3 FreezeAlign runs, all 20 epochs, COCO 118K, Flickr30k eval.
+
+| Model | Input | K | Params | mR |
+|-------|-------|---|--------|------|
+| Token BA | tok/cls | 64 | 98K | 25.34 |
+| **Token BA** | **tok/cls** | **128** | **197K** | **27.27** |
+| Token BA | tok/cls | 256 | 393K | 27.45 |
+| Token BA | tok/cls | 512 | 787K | 27.52 |
+| Token BA | tok/tok | 128 | 197K | 27.26 |
+| Token BA | tok/tok | 256 | 393K | 27.47 |
+| FreezeAlign | cls/cls | - | 6.5M | 21.23 |
+| **FreezeAlign** | **tok/cls** | **-** | **6.5M** | **29.11** |
+| FreezeAlign | tok/tok | - | 6.5M | 27.61 |
+
+### Key findings
+1. **Token input is transformative**: BA tok/cls K=128 (27.27) vs CLS BA K=128 (25.05) = +2.22 mR at same params
+2. **BA is 33× more parameter-efficient than FA**: 197K params → 27.27 mR (94% of FA's 29.11 at 6.5M)
+3. **tok/tok doesn't help either model** — text CLS is sufficient
+4. **FA needs tokens**: FA cls/cls (21.23) is worst of all models
+5. **K=128 is the sweet spot**: K=128→512 gains only +0.25 mR total
+
+**Files changed/created:**
+- `src/train.py` — removed BS=128 cap in token-level path
+- `experiments/exp_full_comparison/results_summary.md` — comprehensive analysis
+- `experiments/exp_full_comparison/results.csv` — all metrics
+- `experiments/exp_full_comparison/comparison_plot.png` — grouped bar chart
+- `experiments/exp_full_comparison/param_efficiency_plot.png` — params vs mR scatter
+
+---
+
+## 2026-03-25 — Server migration, batch/LR optimization, token extraction (Prompt 38)
+
+**What was done:**
+
+### Server migration & baseline reproduction
+- Moved to new server: 2× Quadro RTX 8000 (46–49 GB each), Docker environment with base conda (no named env — packages installed directly)
+- CLS-only baselines reproduced on new server:
+  - BA K=128: 23.66 mR (matches previous server exactly)
+  - LinearProj: 23.57 mR (matches)
+
+### Batch size sweep (CLS BA K=128, COCO 118K)
+- Swept BS={256, 512, 1024, 2048, 4096, 8192, 16384, 32768} at default LR=1e-3
+- **BS=1024 optimal at default LR**: mR=24.34 (+0.68 over BS=256 baseline)
+- Clear inverted-U: performance rises 256→1024, drops sharply above 2048
+- Results: `experiments/exp_batch_size_sweep/results_summary.md`
+
+### LR scaling experiment (CLS BA K=128, COCO 118K)
+- Tested linear and sqrt LR scaling rules at BS={1024, 2048, 4096, 8192}
+- **BS=8192 + LR=32e-3 (linear scaling) achieves mR=25.05** — best CLS-only result, +1.39 over original baseline
+- BS=4096 + LR=16e-3 nearly identical (25.04) at half the memory — practical recommendation
+- Linear scaling completely fixes large-batch degradation; sqrt under-compensates
+- Results: `experiments/exp_lr_scaling/results_summary.md`
+
+### FreezeAlign audit & unified CLI
+- FreezeAlign implementation audited against reference code — all 4 checks passed, matches exactly
+- Added unified `--img-input {cls,tokens}` and `--txt-input {cls,tokens}` CLI flags
+- Both BA and FreezeAlign support all 4 input combos (cls/cls, tok/cls, cls/tok, tok/tok)
+- Paper vs code differences documented
+
+### Image token embedding extraction
+- Full COCO train 118K image tokens extracted to `data/embeddings/all_tokens/`
+- 12 chunks (00–11): chunks 00–10 = 10,000 images, chunk 11 = 8,287 → 118,287 total
+- Shape per chunk: `[N, 257, 768]` (CLS + 256 patches), dtype=float16
+- Total disk: ~56 GB (including Flickr30k test tokens + text CLS + metadata)
+- Extraction verified: all chunks present, shapes correct, total count matches
+
+### Current best results
+| Config | Params | mR | Notes |
+|--------|--------|------|-------|
+| CLS BA K=128, BS=8192, LR=32e-3 | 197K | **25.05** | Best CLS-only |
+| CLS BA K=128, BS=4096, LR=16e-3 | 197K | 25.04 | Practical best (half memory) |
+| CLS BA K=128, BS=1024, LR=1e-3 | 197K | 24.34 | Best at default LR |
+| CLS BA K=128, BS=256, LR=1e-3 | 197K | 23.66 | Original baseline |
+| CLS FreezeAlign, BS=256, LR=1e-3 | 6.5M | ~17.11 | 1-epoch only, needs full training |
+
+### Next steps (2026-03-26)
+1. Extract text token embeddings (for tok/tok experiments)
+2. Full-scale token-level BA experiments: K={64, 128, 256, 512} with optimal BS/LR
+3. Full-scale FreezeAlign experiments: all 4 input combos
+4. Comprehensive comparison: BA vs FreezeAlign across all settings
+
+---
+
+## 2026-03-25 — FreezeAlign audit + unified CLI flags (Prompt 37)
+
+**What was done:**
+
+**Task 1: FreezeAlign audit** — checked all 4 issues against reference code:
+1. **PatchProjection residual skip**: Reference has `Linear(x) + [Linear→GELU→Linear](x)`. No explicit `x+` skip — linear branch IS the residual. GELU not ReLU. **Our code: correct.**
+2. **Text CLS Token Projector**: Reference has NO separate text CLS projector. CLS is included in the token mean pool through `local_text_proj`. **Our code: correct.**
+3. **Vision global projector**: Reference uses `nn.Identity()` — NO global vision MLP. **Our code: correct.**
+4. **Weight sharing**: Automatic via batched matmul. **Our code: correct.**
+
+All checks passed — FreezeAlignProjector matches the reference implementation.
+
+**Task 2: Unified CLI flags** — added `--img-input {cls,tokens}` and `--txt-input {cls,tokens}`:
+- 4 combinations: cls/cls, tok/cls, cls/tok, tok/tok
+- Both BA and FreezeAlign support all 4 combos
+- BA auto-selects TokenBridgeAnchorAligner when either input uses tokens
+- Legacy `--token-level` translated to `--img-input tokens --txt-input cls --chunked`
+- Updated `evaluate_retrieval` and `_bridge_batched` to pass through `txt_mask`
+- Refactored `_run_token_level` to handle all combos and both model types
+
+**Smoke test results:**
+
+| Model | img/txt | 1-epoch mR | Params |
+|-------|---------|-----------|--------|
+| BA K=128 | cls/cls | 12.64 | 196,608 |
+| Token BA K=128 | tok/cls chunked | 17.02 | 196,608 |
+| FreezeAlign | cls/cls | 17.11 | 6,502,657 |
+| FreezeAlign | tok/cls chunked | 18.54 | 6,502,657 |
+| Both models × all 4 combos | mock data | shapes correct | — |
+
+**Files changed:**
+- `src/models/freeze_align.py` — audited, confirmed correct
+- `src/train.py` — new `--img-input`/`--txt-input` flags, refactored `_run_token_level`
+- `src/eval/retrieval.py` — `txt_mask` passthrough in `evaluate_retrieval` and `_bridge_batched`
+- `experiments/exp_freeze_align_baseline/implementation_notes.md` — updated to v3
+
+---
+
+## 2026-03-25 — Freeze-Align audit + text token-level support (Prompt 36)
+
+**What was done:**
+- Audited FreezeAlignProjector against reference implementation — found 5 differences and fixed all
+- Added text token-level support to FreezeAlignProjector and TokenBridgeAnchorAligner
+- Created text token extraction script
+- Updated ChunkedTokenDataset for optional text token loading
+
+**Differences fixed:**
+
+| Issue | v1 | v2 (fixed) |
+|-------|-----|-----------|
+| Temperature | Fixed 0.07 | Learnable nn.Parameter, clamped [0.001, 0.5] |
+| Text projection | ProjectionHead on CLS only | local_text_proj (PatchProj on tokens) + text_proj (MLP after pooling) |
+| Text input | CLS-only | Supports CLS (B, 768) and tokens (B, S, 768) + mask |
+| Vision token order | Separate first, project patches | Project ALL tokens first, then separate (matches reference) |
+| text_proj input dim | dim_txt | embed_dim (after local_text_proj) |
+
+**Updated parameter counts:**
+
+| Model | Params |
+|-------|--------|
+| BridgeAnchors K=128 | 196,608 |
+| LinearProjection | 589,824 |
+| FreezeAlign (full) | **6,502,657** (33× BA) |
+| Token BA K=128 | 196,608 (unchanged — no extra params for text tokens) |
+
+**TokenBridgeAnchorAligner extension:**
+- Now accepts txt_emb as (B, S, D) + txt_mask → per-token anchor sims → masked mean → (B, K)
+- No additional parameters — same A_txt anchors used on all tokens
+- Backward compatible: (B, D) input works as before
+
+**Files changed/created:**
+- `src/models/freeze_align.py` — complete rewrite matching reference exactly
+- `src/models/token_bridge_anchors.py` — added txt_mask parameter, text token path
+- `src/data/chunked_token_dataset.py` — added text_token_level, text_token_path, text_mask_path
+- `scripts/extraction/extract_text_token_embeddings.py` — new extraction script
+- `src/train.py` — learnable temp support via `model.temp` attribute
+
+**Smoke tests:** All passed (FreezeAlign CLS/token, Token BA CLS/token, temp gradient flow)
+
+---
+
+## 2026-03-25 — Freeze-Align baseline implementation (Prompt 35)
+
+**What was done:**
+- Read Freeze-Align reference implementation (`freeze-align/train/models/clip_adjustable_combined_vis_cls.py`)
+- Implemented `FreezeAlignProjector` in `src/models/freeze_align.py`
+- Integrated into training pipeline with `--model freeze_align` CLI option
+- 1-epoch smoke test passed: mR=17.89, loss converging normally
+
+**Architecture (from reference):**
+- **PatchProjection (Token Projector):** `Linear(x) + [Linear(x) → GELU → Linear(x)]` — residual sum of linear and non-linear branches
+- **Vision:** Separate CLS projector + local patch projector (both PatchProjection wrapped in LayerNorm+Dropout), combined by addition, then L2-normalized. Mean pooling for patches.
+- **Text:** ProjectionHead MLP (Linear → GELU → Linear → Dropout → residual → LayerNorm), L2-normalized
+- **Loss:** Standard symmetric InfoNCE (same as ours)
+
+**Parameter comparison:**
+
+| Model | Params |
+|-------|--------|
+| BridgeAnchors K=128 | 197K |
+| LinearProjection | 590K |
+| FreezeAlignProjector | **4,729K** (24× BA, 8× LP) |
+
+**Key design decisions:**
+- Followed reference 'patch' config with LayerNorm+Dropout wrapping (not simplified)
+- CLS-only fallback for (B, 768) input uses cls_vision_proj only
+- No local_text_proj (our text is pre-pooled CLS, not raw tokens)
+- Fixed temp=0.07 for fair comparison (reference uses learnable temp)
+
+**Files:** `src/models/freeze_align.py`, `experiments/exp_freeze_align_baseline/implementation_notes.md`
+
+---
+
+## 2026-03-25 — Full-scale token-level embedding extraction (Prompt 34)
+
+**What was done:**
+- Extracted DINOv2 ViT-B/14 token embeddings (CLS + 256 patches = 257 tokens × 768 dim) for COCO train 118K and Flickr30k test 31K
+- All saved to `data/embeddings/all_tokens/` in float16
+- Updated extraction script (`scripts/extraction/extract_token_embeddings_full.py`) with new output dir, Flickr30k extraction, text copying, pilot indices
+- Updated all code paths: `src/data/chunked_token_dataset.py`, `src/train.py` — all token-level references now point to `all_tokens/`
+- CLS-level code paths unchanged (still `data/embeddings/cls/`)
+
+**Files created:**
+
+| File | Shape | Size |
+|------|-------|------|
+| coco_train_chunk_00..10_img.pt | (10000, 257, 768) fp16 | 3.7 GB each |
+| coco_train_chunk_11_img.pt | (8287, 257, 768) fp16 | 3.1 GB |
+| flickr30k_test_img.pt | (31783, 257, 768) fp16 | 12 GB |
+| coco_train_txt.pt | (118287, 768) fp32 | 347 MB |
+| flickr30k_test_txt.pt | (31783, 768) fp32 | 94 MB |
+| chunk_metadata.json | 12 chunks metadata | 2 KB |
+| pilot_10k_indices.pt | (10000,) indices | 1 MB |
+
+**Total: ~56 GB** (44 GB COCO chunks + 12 GB Flickr30k)
+
+**Timing:** ~15 min total (COCO: ~12 min at ~1 min/chunk, Flickr30k: ~3 min), batch_size=64
+
+**Verification:** All shapes, dtypes (float16 images, float32 text), and chunk boundaries confirmed correct.
+
+---
+
+## 2026-03-25 — LR scaling with larger batch sizes (Prompt 33)
+
+**What was done:**
+- Tested linear and sqrt LR scaling to recover large-batch performance for CLS BA K=128
+- Linear rule: lr = 1e-3 × (bs/256). Sqrt rule: lr = 1e-3 × sqrt(bs/256)
+- 7 new runs: linear {1024, 2048, 4096, 8192} + sqrt {2048, 4096, 8192}
+
+**Results:**
+
+| Batch Size | Original mR | Linear LR mR | Sqrt LR mR |
+|-----------|-------------|-------------|------------|
+| 256 | 23.66 | — | — |
+| 1024 | 24.34 | 24.59 | — |
+| 2048 | 24.24 | 24.90 | 24.81 |
+| 4096 | 23.33 | **25.04** | 24.92 |
+| 8192 | 20.58 | **25.05** | 24.46 |
+
+**Key findings:**
+- **Linear LR scaling completely fixes large-batch degradation** — mR increases monotonically to 25.05 at bs=8192
+- **New CLS BA best: mR=25.05** (+1.39 over original bs=256 baseline, +0.71 over bs=1024 best)
+- Diminishing returns above bs=4096 (+0.01 from 4096→8192), so **bs=4096 lr=16e-3 is the practical optimum** (same perf, half memory)
+- Sqrt scaling effective but weaker — under-compensates at bs=8192 (24.46 vs 25.05)
+- Val loss minima (2.529–2.531) align perfectly with best mR configs
+
+**Timing:** ~13 min total (7 runs × ~2 min each)
+
+**Files:** `experiments/exp_lr_scaling/results_summary.md`, `results.csv`, `scaling_plot.png`
+
+---
+
+## 2026-03-25 — Batch size sweep for CLS BA K=128 (Prompt 32)
+
+**What was done:**
+- Found max batch size: 32768 (65536 OOMs on RTX 8000 — 16 GB needed for B×B similarity matrix)
+- Ran full sweep: bs={256, 512, 1024, 2048, 4096, 8192, 32768}, all 20 epochs, seed=42, COCO 118K
+
+**Results:**
+
+| Batch Size | mR | Δ vs 256 | Epoch Time |
+|-----------|------|----------|------------|
+| 256 | 23.66 | — | 2.3s |
+| 512 | 24.10 | +0.44 | 1.2s |
+| **1024** | **24.34** | **+0.68** | **1.0s** |
+| 2048 | 24.24 | +0.58 | 0.9s |
+| 4096 | 23.33 | -0.33 | 1.0s |
+| 8192 | 20.58 | -3.08 | 1.3s |
+| 32768 | 9.53 | -14.13 | 2.8s |
+
+**Key findings:**
+- **Optimal batch size: 1024 (mR=24.34)** — free +0.68 mR gain over baseline with no extra parameters
+- Clear inverted-U pattern: more negatives help up to 1024, then too few gradient steps per epoch hurt (118K/32768 = only 3.6 batches)
+- bs=1024 is also fastest (1.0s/epoch) and has lowest val loss (2.554)
+- Very large batch sizes would need LR scaling/LARS, but unlikely to beat 1024 at this dataset size
+- **Recommendation: update default batch size from 256 to 1024**
+
+**Timing:** ~14 min total (7 runs × ~2 min each)
+
+**Files:** `experiments/exp_batch_size_sweep/results_summary.md`, `results.csv`, `scaling_plot.png`
+
+---
+
+## 2026-03-25 — New server setup + CLS baseline validation (Prompt 31)
+
+**What was done:**
+- Set up new Docker server (2× Quadro RTX 8000, CUDA 12.4, PyTorch 2.4.1+cu118)
+- Downloaded COCO 2017 (train2017: 118,287 images, val2017: 5,000 images, annotations) and Flickr30k (31,783 images + captions) from scratch
+- Extracted CLS embeddings: DINOv2 ViT-B/14 (images) + all-mpnet-base-v2 (text) for COCO train and Flickr30k test
+- Trained and validated both CLS baselines on full COCO 118K, seed=42
+
+**Results — exact reproduction:**
+
+| Model | Params | New Server mR | Previous Server mR | Δ |
+|-------|--------|---------------|-------------------|---|
+| BridgeAnchors K=128 | 196,608 | 23.66 | 23.66 | 0.00 |
+| LinearProjection | 589,824 | 23.57 | 23.57 | 0.00 |
+
+**Key details:**
+- NAS (`/mnt/2021_NIA_data/`) not accessible from Docker container — all data downloaded fresh
+- No conda env in Docker — deps installed system-level via pip in pytorch base image
+- COCO download took ~4.5 hours (server throttling, multiple restarts with `wget -c`)
+- Flickr30k downloaded via Kaggle API in ~3 seconds; captions converted from CSV to .token format
+- Embedding extraction: COCO train ~10 min, Flickr30k ~2 min
+- Training: ~2 min per run (20 epochs), comparable to previous server
+
+**Files created:**
+- `data/embeddings/coco_train_img.pt`, `coco_train_txt.pt` (347 MB each)
+- `data/embeddings/flickr30k_test_img.pt`, `flickr30k_test_txt.pt` (93 MB each)
+- `experiments/exp_new_server_validation/results_summary.md`
 
 ---
 

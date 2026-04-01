@@ -8,8 +8,8 @@ Three complementary analyses:
 
 Usage as standalone script:
     python -m src.eval.anchor_analysis --checkpoint path/to/best.pt \
-        --coco-img data/embeddings/coco_train_img.pt \
-        --coco-txt data/embeddings/coco_train_txt.pt
+        --coco-img data/embeddings/cls/coco_train_img.pt \
+        --coco-txt data/embeddings/cls/coco_train_txt.pt
 """
 
 from __future__ import annotations
@@ -420,10 +420,10 @@ def main() -> None:
     parser.add_argument("--checkpoint", type=str, required=True,
                         help="Path to model checkpoint.")
     parser.add_argument("--coco-img", type=str,
-                        default="data/embeddings/coco_train_img.pt",
+                        default="data/embeddings/cls/coco_train_img.pt",
                         help="Path to COCO training image embeddings.")
     parser.add_argument("--coco-txt", type=str,
-                        default="data/embeddings/coco_train_txt.pt",
+                        default="data/embeddings/cls/coco_train_txt.pt",
                         help="Path to COCO training text embeddings.")
     parser.add_argument("--labels", type=str, default=None,
                         help="Optional path to per-sample labels .pt for class alignment.")
