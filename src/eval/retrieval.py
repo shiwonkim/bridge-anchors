@@ -29,6 +29,8 @@ def evaluate_retrieval(
     ks: tuple[int, ...] = (1, 5, 10),
     batch_size: int = 0,
     txt_mask: torch.Tensor | None = None,
+    img_cls_attn: torch.Tensor | None = None,
+    txt_cls_attn: torch.Tensor | None = None,
 ) -> dict[str, float]:
     """Compute image-text retrieval recall metrics.
 
@@ -55,18 +57,21 @@ def evaluate_retrieval(
     """
     model.eval()
     device = get_model_device(model)
+    is_anchor_mediated = getattr(model, "anchor_mediated", False)
 
-    # --- Compute bridged representations ---
-    b_img, b_txt = _bridge_batched(model, img_embs, txt_embs, device, batch_size,
-                                   txt_mask=txt_mask)
-
-    # --- Similarity matrix (on CPU to avoid OOM for large N) ---
-    # Both outputs are already L2-normalised, so dot product = cosine sim.
-    # A 31K×31K float32 matrix is ~3.8 GB — fits in RAM but not alongside
-    # model + embeddings on a single GPU.
-    b_img_cpu = b_img.cpu()
-    b_txt_cpu = b_txt.cpu()
-    sims = b_img_cpu @ b_txt_cpu.T  # (N, N)
+    if is_anchor_mediated:
+        # Anchor-mediated returns (p_img, p_txt) or (p_img, p_txt, b_cls_img, b_cls_txt)
+        sims = _compute_anchor_mediated_sims(
+            model, img_embs, txt_embs, device, batch_size, txt_mask=txt_mask,
+        )
+    else:
+        # --- Compute bridged representations ---
+        b_img, b_txt = _bridge_batched(model, img_embs, txt_embs, device, batch_size,
+                                       txt_mask=txt_mask,
+                                       img_cls_attn=img_cls_attn,
+                                       txt_cls_attn=txt_cls_attn)
+        # (N, D) profiles: standard dot product
+        sims = b_img.cpu() @ b_txt.cpu().T  # (N, N)
 
     # --- Recall computation (CPU) ---
     n = sims.shape[0]
@@ -148,6 +153,68 @@ def _get_gt_ranks(sims: torch.Tensor, gt: torch.Tensor) -> torch.Tensor:
     return ranks
 
 
+def _compute_anchor_mediated_sims(
+    model: torch.nn.Module,
+    img_embs: torch.Tensor,
+    txt_embs: torch.Tensor,
+    device: torch.device,
+    batch_size: int,
+    txt_mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Compute (N, N) similarity matrix for anchor-mediated models.
+
+    Batches the forward pass and accumulates per-anchor profiles,
+    then computes the full sim matrix on CPU.
+    """
+    n = img_embs.shape[0]
+    bs = batch_size if batch_size > 0 else n
+    am_cls_w = getattr(model, "am_cls_weight", 0.0)
+
+    p_img_parts: list[torch.Tensor] = []
+    p_txt_parts: list[torch.Tensor] = []
+    cls_img_parts: list[torch.Tensor] = []
+    cls_txt_parts: list[torch.Tensor] = []
+
+    for start in range(0, n, bs):
+        end = min(start + bs, n)
+        kwargs = {}
+        if txt_mask is not None:
+            kwargs["txt_mask"] = txt_mask[start:end].to(device)
+        out = model(
+            img_embs[start:end].to(device),
+            txt_embs[start:end].to(device),
+            **kwargs,
+        )
+        if am_cls_w > 0:
+            pi, pt, ci, ct = out
+            cls_img_parts.append(ci.cpu())
+            cls_txt_parts.append(ct.cpu())
+        else:
+            pi, pt = out
+        p_img_parts.append(pi.cpu())
+        p_txt_parts.append(pt.cpu())
+
+    p_img_all = torch.cat(p_img_parts)  # (N, K, K)
+    p_txt_all = torch.cat(p_txt_parts)  # (N, K, K)
+    K = p_img_all.shape[1]
+
+    # Chunked einsum to avoid OOM
+    sims = torch.zeros(n, n)
+    chunk = 1024
+    for i_start in range(0, n, chunk):
+        i_end = min(i_start + chunk, n)
+        sims[i_start:i_end] = torch.einsum(
+            "bkd,ckd->bc", p_img_all[i_start:i_end], p_txt_all,
+        ) / K
+
+    if am_cls_w > 0 and cls_img_parts:
+        cls_img_all = torch.cat(cls_img_parts)  # (N, K)
+        cls_txt_all = torch.cat(cls_txt_parts)  # (N, K)
+        sims = sims + am_cls_w * (cls_img_all @ cls_txt_all.T)
+
+    return sims
+
+
 def _bridge_batched(
     model: torch.nn.Module,
     img_embs: torch.Tensor,
@@ -155,6 +222,8 @@ def _bridge_batched(
     device: torch.device,
     batch_size: int,
     txt_mask: torch.Tensor | None = None,
+    img_cls_attn: torch.Tensor | None = None,
+    txt_cls_attn: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Compute bridged representations, optionally in batches.
 
@@ -164,11 +233,14 @@ def _bridge_batched(
     """
     n = img_embs.shape[0]
     if batch_size <= 0 or batch_size >= n:
-        img_embs = img_embs.to(device)
-        txt_embs = txt_embs.to(device)
+        kwargs: dict = {}
         if txt_mask is not None:
-            return model(img_embs, txt_embs, txt_mask=txt_mask.to(device))
-        return model(img_embs, txt_embs)
+            kwargs["txt_mask"] = txt_mask.to(device)
+        if img_cls_attn is not None:
+            kwargs["img_cls_attn"] = img_cls_attn.to(device)
+        if txt_cls_attn is not None:
+            kwargs["txt_cls_attn"] = txt_cls_attn.to(device)
+        return model(img_embs.to(device), txt_embs.to(device), **kwargs)
 
     b_img_parts: list[torch.Tensor] = []
     b_txt_parts: list[torch.Tensor] = []
@@ -177,6 +249,10 @@ def _bridge_batched(
         kwargs = {}
         if txt_mask is not None:
             kwargs["txt_mask"] = txt_mask[start:end].to(device)
+        if img_cls_attn is not None:
+            kwargs["img_cls_attn"] = img_cls_attn[start:end].to(device)
+        if txt_cls_attn is not None:
+            kwargs["txt_cls_attn"] = txt_cls_attn[start:end].to(device)
         bi, bt = model(
             img_embs[start:end].to(device),
             txt_embs[start:end].to(device),

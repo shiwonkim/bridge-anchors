@@ -1,0 +1,38 @@
+00:36:29 | INFO    | __main__ | wandb logging enabled (project=bridge-anchors, run=k_ablation_cap_256).
+00:36:29 | INFO    | __main__ | Starting training for 20 epochs...
+00:36:29 | INFO    | __main__ | Config: model=bridge_anchors K=256 bs=1024 lr=8.0e-03 temp=0.070 grad_clip=1.0 ortho=0.000 lb=0.000
+00:40:35 | INFO    | __main__ | Epoch   1/20 | loss=3.0764 | lr=3.96e-03 | 218.7s | R@1=12.3/14.1 R@5=28.0/30.5 mR=26.9
+00:40:36 | INFO    | __main__ |   ↑ New best mean recall: 26.93
+00:44:02 | INFO    | __main__ | Epoch   2/20 | loss=1.7732 | lr=7.89e-03 | 176.8s | R@1=16.3/18.2 R@5=34.9/36.9 mR=32.8
+00:44:02 | INFO    | __main__ |   ↑ New best mean recall: 32.83
+/opt/conda/lib/python3.11/site-packages/torch/optim/lr_scheduler.py:232: UserWarning: The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible. Please use `scheduler.step()` to step the scheduler. During the deprecation, if epoch is different from None, the closed form is used instead of the new chainable form, where available. Please open an issue if you are unable to replicate your use case: https://github.com/pytorch/pytorch/issues/new/choose.
+  warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
+00:47:44 | INFO    | __main__ | Epoch   3/20 | loss=1.6157 | lr=7.95e-03 | 190.3s | R@1=18.5/21.3 R@5=38.0/40.9 mR=36.2
+00:47:45 | INFO    | __main__ |   ↑ New best mean recall: 36.24
+00:51:25 | INFO    | __main__ | Epoch   4/20 | loss=1.5440 | lr=7.78e-03 | 191.6s | R@1=19.2/21.4 R@5=39.2/41.5 mR=37.0
+00:51:25 | INFO    | __main__ |   ↑ New best mean recall: 36.96
+00:55:09 | INFO    | __main__ | Epoch   5/20 | loss=1.4971 | lr=7.50e-03 | 191.0s | R@1=20.0/22.4 R@5=40.2/42.6 mR=38.0
+00:55:10 | INFO    | __main__ |   ↑ New best mean recall: 37.98
+00:59:02 | INFO    | __main__ | Epoch   6/20 | loss=1.4735 | lr=7.11e-03 | 198.5s | R@1=20.1/22.6 R@5=40.0/42.6 mR=38.0
+00:59:03 | INFO    | __main__ |   ↑ New best mean recall: 38.00
+01:02:50 | INFO    | __main__ | Epoch   7/20 | loss=1.4538 | lr=6.64e-03 | 192.9s | R@1=20.4/23.1 R@5=40.9/43.5 mR=38.7
+01:02:51 | INFO    | __main__ |   ↑ New best mean recall: 38.74
+01:06:51 | INFO    | __main__ | Epoch   8/20 | loss=1.4374 | lr=6.09e-03 | 206.7s | R@1=20.3/23.1 R@5=40.7/43.5 mR=38.7
+01:10:34 | INFO    | __main__ | Epoch   9/20 | loss=1.4164 | lr=5.48e-03 | 185.1s | R@1=20.7/23.5 R@5=41.2/43.9 mR=39.1
+01:10:34 | INFO    | __main__ |   ↑ New best mean recall: 39.07
+01:14:32 | INFO    | __main__ | Epoch  10/20 | loss=1.4041 | lr=4.82e-03 | 200.4s | R@1=21.1/24.0 R@5=41.8/44.2 mR=39.5
+01:14:33 | INFO    | __main__ |   ↑ New best mean recall: 39.54
+01:18:45 | INFO    | __main__ | Epoch  11/20 | loss=1.3911 | lr=4.14e-03 | 218.8s | R@1=20.8/23.7 R@5=41.4/44.1 mR=39.2
+01:22:37 | INFO    | __main__ | Epoch  12/20 | loss=1.3725 | lr=3.46e-03 | 199.3s | R@1=21.2/24.1 R@5=42.3/44.6 mR=39.8
+01:22:38 | INFO    | __main__ |   ↑ New best mean recall: 39.82
+01:26:20 | INFO    | __main__ | Epoch  13/20 | loss=1.3505 | lr=2.79e-03 | 188.5s | R@1=21.3/23.9 R@5=42.0/44.6 mR=39.7
+01:30:26 | INFO    | __main__ | Epoch  14/20 | loss=1.3331 | lr=2.16e-03 | 210.6s | R@1=21.1/23.8 R@5=42.1/44.4 mR=39.7
+01:34:21 | INFO    | __main__ | Epoch  15/20 | loss=1.3079 | lr=1.58e-03 | 199.6s | R@1=21.6/24.3 R@5=42.4/45.1 mR=40.2
+01:34:22 | INFO    | __main__ |   ↑ New best mean recall: 40.17
+01:38:09 | INFO    | __main__ | Epoch  16/20 | loss=1.2833 | lr=1.07e-03 | 191.9s | R@1=21.5/24.5 R@5=42.6/44.9 mR=40.2
+01:38:10 | INFO    | __main__ |   ↑ New best mean recall: 40.19
+01:42:06 | INFO    | __main__ | Epoch  17/20 | loss=1.2601 | lr=6.50e-04 | 207.0s | R@1=21.8/24.4 R@5=42.8/44.9 mR=40.3
+01:42:07 | INFO    | __main__ |   ↑ New best mean recall: 40.29
+01:45:33 | INFO    | __main__ | Epoch  18/20 | loss=1.2372 | lr=3.26e-04 | 175.1s | R@1=21.9/24.3 R@5=42.8/44.9 mR=40.3
+01:49:06 | INFO    | __main__ | Epoch  19/20 | loss=1.2227 | lr=1.10e-04 | 182.6s | R@1=21.8/24.3 R@5=42.8/44.9 mR=40.2
+01:52:46 | INFO    | __main__ | Epoch  20/20 | loss=1.2087 | lr=8.20e-06 | 191.2s | R@1=21.8/24.4 R@5=42.7/44.9 mR=40.3

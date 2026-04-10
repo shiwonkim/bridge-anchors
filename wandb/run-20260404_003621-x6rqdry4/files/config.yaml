@@ -1,0 +1,127 @@
+_wandb:
+    value:
+        cli_version: 0.25.1
+        e:
+            latsgboovd2x6zi5na140wjhjgs0lafa:
+                args:
+                    - --config
+                    - configs/default.yaml
+                    - --model
+                    - bridge_anchors
+                    - --num-anchors
+                    - "64"
+                    - --img-input
+                    - tokens
+                    - --txt-input
+                    - tokens
+                    - --chunked
+                    - --batch-size
+                    - "1024"
+                    - --lr
+                    - "8e-3"
+                    - --epochs
+                    - "20"
+                    - --seed
+                    - "42"
+                    - --token-pool
+                    - cross_attn
+                    - --pool-temperature
+                    - "0.05"
+                    - --experiment-name
+                    - k_ablation_cap_64
+                    - --gpu
+                    - "1"
+                cpu_count: 48
+                cpu_count_logical: 96
+                cudaVersion: "12.4"
+                disk:
+                    /:
+                        total: "19939719118848"
+                        used: "19680601980928"
+                email: shiwon1998@gmail.com
+                executable: /opt/conda/bin/python
+                git:
+                    remote: https://github.com/shiwonkim/bridge-anchors.git
+                gpu: Quadro RTX 8000
+                gpu_count: 2
+                gpu_nvidia:
+                    - architecture: Turing
+                      cudaCores: 4608
+                      memoryTotal: "48318382080"
+                      name: Quadro RTX 8000
+                      uuid: GPU-62550003-0846-c351-e20a-ea58ced59724
+                    - architecture: Turing
+                      cudaCores: 4608
+                      memoryTotal: "51539607552"
+                      name: Quadro RTX 8000
+                      uuid: GPU-67a4f526-3109-71be-e2b4-2cdb0a22ebb4
+                host: f7bdae273657
+                memory:
+                    total: "269866811392"
+                os: Linux-3.10.0-1160.42.2.el7.x86_64-x86_64-with-glibc2.35
+                program: -m src.train
+                python: CPython 3.11.9
+                root: /workspace/bridge-anchors
+                startedAt: "2026-04-04T00:36:21.325871Z"
+                writerId: latsgboovd2x6zi5na140wjhjgs0lafa
+        m: []
+        python_version: 3.11.9
+        t:
+            "1":
+                - 1
+            "2":
+                - 1
+            "3":
+                - 2
+                - 13
+                - 16
+                - 61
+                - 62
+            "4": 3.11.9
+            "5": 0.25.1
+            "10":
+                - 20
+            "12": 0.25.1
+            "13": linux-x86_64
+baseline:
+    value:
+        mlp_hidden_dim: 256
+data:
+    value:
+        dataset: coco
+        img_emb_path: data/embeddings/cls/coco_train_img.pt
+        num_samples: null
+        txt_emb_path: data/embeddings/cls/coco_train_txt.pt
+eval:
+    value:
+        eval_every: 1
+        flickr_img_emb_path: data/embeddings/cls/flickr30k_test_img.pt
+        flickr_txt_emb_path: data/embeddings/cls/flickr30k_test_txt.pt
+        imagenet_img_emb_path: data/embeddings/cls/imagenet_val_img.pt
+        imagenet_txt_emb_path: data/embeddings/cls/imagenet_val_txt.pt
+logging:
+    value:
+        experiment_name: k_ablation_cap_64
+        save_dir: results/checkpoints
+        wandb_project: bridge-anchors
+model:
+    value:
+        dim_img: 768
+        dim_txt: 768
+        init_method: random
+        name: bridge_anchors
+        num_anchors: 64
+training:
+    value:
+        batch_size: 1024
+        epochs: 20
+        lb_lambda: 0
+        lr: 0.008
+        num_workers: 4
+        ortho_lambda: 0
+        pa_lambda: 0
+        scheduler: cosine
+        seed: 42
+        temperature: 0.07
+        warmup_epochs: 2
+        weight_decay: 0.0001

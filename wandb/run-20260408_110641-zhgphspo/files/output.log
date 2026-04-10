@@ -1,0 +1,3 @@
+11:06:48 | INFO    | __main__ | wandb logging enabled (project=bridge-anchors, run=stacked_k128_meta128).
+11:06:48 | INFO    | __main__ | Starting training for 20 epochs...
+11:06:48 | INFO    | __main__ | Config: model=bridge_anchors K=128 bs=1024 lr=8.0e-03 temp=0.070 grad_clip=1.0 ortho=0.000 lb=0.000

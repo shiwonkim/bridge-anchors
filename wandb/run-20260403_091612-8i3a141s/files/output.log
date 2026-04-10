@@ -1,0 +1,62 @@
+09:16:14 | INFO    | __main__ | wandb logging enabled (project=bridge-anchors, run=2_1a_soft_cls1.0).
+09:16:14 | INFO    | __main__ | Starting training for 20 epochs...
+09:16:14 | INFO    | __main__ | Config: model=bridge_anchors K=128 bs=1024 lr=8.0e-03 temp=0.070 grad_clip=1.0 ortho=0.000 lb=0.000
+09:21:18 | INFO    | __main__ | Epoch   1/20 | loss=3.1403 | lr=3.96e-03 | 178.2s | R@1=8.7/9.3 R@5=22.0/23.2 mR=20.9
+09:21:18 | INFO    | __main__ |   ↑ New best mean recall: 20.95
+09:26:14 | INFO    | __main__ | Epoch   2/20 | loss=1.7831 | lr=7.89e-03 | 155.6s | R@1=10.2/10.9 R@5=25.3/26.8 mR=23.8
+09:26:14 | INFO    | __main__ |   ↑ New best mean recall: 23.85
+/opt/conda/lib/python3.11/site-packages/torch/optim/lr_scheduler.py:232: UserWarning: The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible. Please use `scheduler.step()` to step the scheduler. During the deprecation, if epoch is different from None, the closed form is used instead of the new chainable form, where available. Please open an issue if you are unable to replicate your use case: https://github.com/pytorch/pytorch/issues/new/choose.
+  warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
+09:31:11 | INFO    | __main__ | Epoch   3/20 | loss=1.6365 | lr=7.95e-03 | 176.4s | R@1=11.3/12.4 R@5=27.0/28.8 mR=25.7
+09:31:11 | INFO    | __main__ |   ↑ New best mean recall: 25.69
+09:36:12 | INFO    | __main__ | Epoch   4/20 | loss=1.5523 | lr=7.78e-03 | 168.0s | R@1=11.6/12.5 R@5=27.5/29.0 mR=26.0
+09:36:12 | INFO    | __main__ |   ↑ New best mean recall: 26.02
+09:40:49 | INFO    | __main__ | Epoch   5/20 | loss=1.4922 | lr=7.50e-03 | 157.6s | R@1=11.7/12.9 R@5=28.2/29.7 mR=26.6
+09:40:49 | INFO    | __main__ |   ↑ New best mean recall: 26.59
+09:45:39 | INFO    | __main__ | Epoch   6/20 | loss=1.4548 | lr=7.11e-03 | 166.1s | R@1=11.9/12.8 R@5=28.2/29.8 mR=26.6
+09:50:15 | INFO    | __main__ | Epoch   7/20 | loss=1.4255 | lr=6.64e-03 | 153.2s | R@1=11.8/12.9 R@5=28.0/30.0 mR=26.7
+09:50:15 | INFO    | __main__ |   ↑ New best mean recall: 26.68
+09:54:44 | INFO    | __main__ | Epoch   8/20 | loss=1.3999 | lr=6.09e-03 | 147.4s | R@1=12.0/13.0 R@5=28.3/29.7 mR=26.7
+09:59:14 | INFO    | __main__ | Epoch   9/20 | loss=1.3689 | lr=5.48e-03 | 132.0s | R@1=11.9/12.8 R@5=28.5/29.9 mR=26.8
+09:59:14 | INFO    | __main__ |   ↑ New best mean recall: 26.77
+10:03:30 | INFO    | __main__ | Epoch  10/20 | loss=1.3500 | lr=4.82e-03 | 129.6s | R@1=12.1/13.0 R@5=28.5/30.0 mR=26.9
+10:03:30 | INFO    | __main__ |   ↑ New best mean recall: 26.87
+10:07:39 | INFO    | __main__ | Epoch  11/20 | loss=1.3265 | lr=4.14e-03 | 96.7s | R@1=12.1/13.0 R@5=28.5/29.6 mR=26.7
+10:12:23 | INFO    | __main__ | Epoch  12/20 | loss=1.2985 | lr=3.46e-03 | 125.2s | R@1=12.0/13.1 R@5=28.6/30.0 mR=26.9
+10:17:02 | INFO    | __main__ | Epoch  13/20 | loss=1.2690 | lr=2.79e-03 | 118.9s | R@1=12.0/13.1 R@5=28.3/30.0 mR=26.8
+10:20:44 | INFO    | __main__ | Epoch  14/20 | loss=1.2439 | lr=2.16e-03 | 107.4s | R@1=12.0/12.8 R@5=28.2/30.0 mR=26.8
+10:25:11 | INFO    | __main__ | Epoch  15/20 | loss=1.2103 | lr=1.58e-03 | 155.2s | R@1=12.2/13.0 R@5=28.7/30.1 mR=27.0
+10:25:11 | INFO    | __main__ |   ↑ New best mean recall: 26.98
+10:29:50 | INFO    | __main__ | Epoch  16/20 | loss=1.1844 | lr=1.07e-03 | 160.5s | R@1=12.4/13.0 R@5=28.4/30.1 mR=27.0
+10:34:35 | INFO    | __main__ | Epoch  17/20 | loss=1.1591 | lr=6.50e-04 | 164.7s | R@1=12.1/13.0 R@5=28.3/30.1 mR=26.8
+10:39:16 | INFO    | __main__ | Epoch  18/20 | loss=1.1317 | lr=3.26e-04 | 162.3s | R@1=12.3/12.9 R@5=28.4/29.9 mR=26.8
+10:43:59 | INFO    | __main__ | Epoch  19/20 | loss=1.1193 | lr=1.10e-04 | 158.4s | R@1=12.2/12.9 R@5=28.3/29.9 mR=26.8
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/workspace/bridge-anchors/src/train.py", line 1339, in <module>
+    main()
+  File "/workspace/bridge-anchors/src/train.py", line 1100, in main
+    train_metrics = train_one_epoch(
+                    ^^^^^^^^^^^^^^^^
+  File "/workspace/bridge-anchors/src/train.py", line 748, in train_one_epoch
+    for batch in data_iter:
+  File "/workspace/bridge-anchors/src/data/chunked_token_dataset.py", line 169, in epoch_iterator
+    chunk_img = torch.load(chunk_path, weights_only=True)  # (C, 257, 768) float16
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/torch/serialization.py", line 1090, in load
+    return _load(opened_zipfile,
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/torch/serialization.py", line 1525, in _load
+    result = unpickler.load()
+             ^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/torch/_weights_only_unpickler.py", line 342, in load
+    self.append(self.persistent_load(pid))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/torch/serialization.py", line 1492, in persistent_load
+    typed_storage = load_tensor(dtype, nbytes, key, _maybe_decode_ascii(location))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/torch/serialization.py", line 1457, in load_tensor
+    storage = zip_file.get_storage_from_record(name, numel, torch.UntypedStorage)._typed_storage()._untyped_storage
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

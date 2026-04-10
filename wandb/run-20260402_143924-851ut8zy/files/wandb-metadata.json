@@ -1,0 +1,76 @@
+{
+  "os": "Linux-3.10.0-1160.42.2.el7.x86_64-x86_64-with-glibc2.35",
+  "python": "CPython 3.11.9",
+  "startedAt": "2026-04-02T14:39:24.044216Z",
+  "args": [
+    "--config",
+    "configs/default.yaml",
+    "--model",
+    "bridge_anchors",
+    "--num-anchors",
+    "128",
+    "--img-input",
+    "tokens",
+    "--txt-input",
+    "tokens",
+    "--chunked",
+    "--batch-size",
+    "1024",
+    "--lr",
+    "8e-3",
+    "--epochs",
+    "20",
+    "--seed",
+    "42",
+    "--token-pool",
+    "cross_attn",
+    "--pool-temperature",
+    "0.05",
+    "--ca-lambda",
+    "1.0",
+    "--ca-exclude-cls",
+    "--experiment-name",
+    "1_2b_toktok_dual_1.0",
+    "--gpu",
+    "1"
+  ],
+  "program": "-m src.train",
+  "git": {
+    "remote": "https://github.com/shiwonkim/bridge-anchors.git"
+  },
+  "email": "shiwon1998@gmail.com",
+  "root": "/workspace/bridge-anchors",
+  "host": "3fca6b9b22c1",
+  "executable": "/opt/conda/bin/python",
+  "cpu_count": 48,
+  "cpu_count_logical": 96,
+  "gpu": "Quadro RTX 8000",
+  "gpu_count": 2,
+  "disk": {
+    "/": {
+      "total": "19939719118848",
+      "used": "19677304795136"
+    }
+  },
+  "memory": {
+    "total": "269866811392"
+  },
+  "gpu_nvidia": [
+    {
+      "name": "Quadro RTX 8000",
+      "memoryTotal": "48318382080",
+      "cudaCores": 4608,
+      "architecture": "Turing",
+      "uuid": "GPU-62550003-0846-c351-e20a-ea58ced59724"
+    },
+    {
+      "name": "Quadro RTX 8000",
+      "memoryTotal": "51539607552",
+      "cudaCores": 4608,
+      "architecture": "Turing",
+      "uuid": "GPU-67a4f526-3109-71be-e2b4-2cdb0a22ebb4"
+    }
+  ],
+  "cudaVersion": "12.4",
+  "writerId": "ezx8mqfluk97ejh65y87e8snt7ce5wp5"
+}

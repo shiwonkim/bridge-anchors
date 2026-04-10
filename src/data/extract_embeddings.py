@@ -615,10 +615,10 @@ def parse_args() -> argparse.Namespace:
         help="Number of DataLoader workers.",
     )
     parser.add_argument(
-        "--device",
-        type=str,
+        "--gpu",
+        type=int,
         default=None,
-        help="Device to use (default: cuda if available, else cpu).",
+        help="GPU index to use (e.g. 0 or 1). Defaults to CUDA:0 if available.",
     )
     parser.add_argument(
         "--force",
@@ -647,10 +647,10 @@ def main() -> None:
         sys.exit(1)
 
     # Device
-    if args.device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if args.gpu is not None:
+        device = torch.device(f"cuda:{args.gpu}")
     else:
-        device = torch.device(args.device)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info("Using device: %s", device)
 
     # Create output directory

@@ -60,6 +60,8 @@ class ChunkedTokenDataset:
         text_token_level: bool = False,
         text_token_path: str | Path | None = None,
         text_mask_path: str | Path | None = None,
+        img_cls_attn_path: str | Path | None = None,
+        txt_cls_attn_path: str | Path | None = None,
     ) -> None:
         self.chunk_dir = Path(chunk_dir)
         self.batch_size = batch_size
@@ -102,6 +104,24 @@ class ChunkedTokenDataset:
             logger.info("Text tokens: %s %s, masks: %s %s",
                        tuple(self.txt_tokens.shape), self.txt_tokens.dtype,
                        tuple(self.txt_masks.shape), self.txt_masks.dtype)
+
+        # Optionally load CLS attention maps
+        self.img_cls_attn = None
+        self.txt_cls_attn = None
+        if img_cls_attn_path is not None:
+            img_cls_attn_path = Path(img_cls_attn_path)
+            if img_cls_attn_path.exists():
+                logger.info("Loading img CLS attn from %s...", img_cls_attn_path)
+                self.img_cls_attn = torch.load(img_cls_attn_path, weights_only=True).float()
+                assert self.img_cls_attn.shape[0] == self.total_samples
+                logger.info("Img CLS attn: %s", tuple(self.img_cls_attn.shape))
+        if txt_cls_attn_path is not None:
+            txt_cls_attn_path = Path(txt_cls_attn_path)
+            if txt_cls_attn_path.exists():
+                logger.info("Loading txt CLS attn from %s...", txt_cls_attn_path)
+                self.txt_cls_attn = torch.load(txt_cls_attn_path, weights_only=True).float()
+                assert self.txt_cls_attn.shape[0] == self.total_samples
+                logger.info("Txt CLS attn: %s", tuple(self.txt_cls_attn.shape))
 
         # Deterministic train/val split at the sample level
         n_val = max(1, int(self.total_samples * val_fraction))
@@ -189,6 +209,18 @@ class ChunkedTokenDataset:
                     img_batch = img_batch.to(device, non_blocking=True)
                     txt_batch = txt_batch.to(device, non_blocking=True)
 
+                # Optional CLS attention maps
+                img_attn_batch = None
+                txt_attn_batch = None
+                if self.img_cls_attn is not None:
+                    img_attn_batch = self.img_cls_attn[batch_globals]
+                    if device is not None:
+                        img_attn_batch = img_attn_batch.to(device, non_blocking=True)
+                if self.txt_cls_attn is not None:
+                    txt_attn_batch = self.txt_cls_attn[batch_globals]
+                    if device is not None:
+                        txt_attn_batch = txt_attn_batch.to(device, non_blocking=True)
+
                 if self.text_token_level:
                     txt_tok_batch = self.txt_tokens[batch_globals].float()  # (B, S, 768)
                     txt_mask_batch = self.txt_masks[batch_globals]           # (B, S) bool
@@ -197,9 +229,9 @@ class ChunkedTokenDataset:
                         txt_tok_batch = txt_tok_batch.to(device, non_blocking=True)
                         txt_mask_batch = txt_mask_batch.to(device, non_blocking=True)
 
-                    yield img_batch, txt_batch, txt_tok_batch, txt_mask_batch
+                    yield img_batch, txt_batch, txt_tok_batch, txt_mask_batch, img_attn_batch, txt_attn_batch
                 else:
-                    yield img_batch, txt_batch
+                    yield img_batch, txt_batch, img_attn_batch, txt_attn_batch
 
             # Free chunk memory before loading next
             del chunk_img

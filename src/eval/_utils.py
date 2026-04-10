@@ -60,10 +60,21 @@ def load_model_from_checkpoint(
     model_name = cfg["model"]["name"]
 
     if model_name == "bridge_anchors":
+        # Detect optional features from state_dict
+        has_learnable_tau = "log_pool_temperature" in state_dict
+        has_cls_attn_betas = "cls_attn_betas_img" in state_dict
+        # Detect projector from state_dict
+        has_projector = "proj_img.down.weight" in state_dict
+        proj_dim = 0
+        if has_projector:
+            proj_dim = state_dict["proj_img.down.weight"].shape[0]
         model: torch.nn.Module = BridgeAnchorAligner(
             dim_img=cfg["model"]["dim_img"],
             dim_txt=cfg["model"]["dim_txt"],
             num_anchors=cfg["model"]["num_anchors"],
+            learnable_tau=has_learnable_tau,
+            cls_attn_prior="additive" if has_cls_attn_betas else "none",
+            projector_dim=proj_dim,
         )
     elif model_name == "linear_projection":
         model = LinearProjection(
@@ -87,7 +98,8 @@ def load_model_from_checkpoint(
     else:
         raise ValueError(f"Unknown model name in checkpoint: {model_name!r}")
 
-    model.load_state_dict(state_dict)
+    # strict=False to handle optional buffers like _group_tau_vec
+    model.load_state_dict(state_dict, strict=False)
     model = model.to(device)
     model.eval()
     logger.info("Loaded %s from %s (epoch %d).",

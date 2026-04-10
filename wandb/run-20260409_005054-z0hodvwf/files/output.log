@@ -1,0 +1,37 @@
+00:50:56 | INFO    | __main__ | wandb logging enabled (project=bridge-anchors, run=step4_full).
+00:50:56 | INFO    | __main__ | Starting training for 20 epochs...
+00:50:56 | INFO    | __main__ | Config: model=bridge_anchors K=128 bs=1024 lr=8.0e-03 temp=0.070 grad_clip=1.0 ortho=0.000 lb=0.000
+00:53:11 | INFO    | __main__ | Epoch   1/20 | loss=3.1931 | lr=3.96e-03 | 113.3s | R@1=8.9/10.1 R@5=22.5/23.7 mR=21.4
+00:53:11 | INFO    | __main__ |   ↑ New best mean recall: 21.40
+00:55:29 | INFO    | __main__ | Epoch   2/20 | loss=1.8613 | lr=7.89e-03 | 113.6s | R@1=11.9/12.9 R@5=27.8/28.8 mR=26.0
+00:55:29 | INFO    | __main__ |   ↑ New best mean recall: 26.03
+/opt/conda/lib/python3.11/site-packages/torch/optim/lr_scheduler.py:232: UserWarning: The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible. Please use `scheduler.step()` to step the scheduler. During the deprecation, if epoch is different from None, the closed form is used instead of the new chainable form, where available. Please open an issue if you are unable to replicate your use case: https://github.com/pytorch/pytorch/issues/new/choose.
+  warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
+00:57:43 | INFO    | __main__ | Epoch   3/20 | loss=1.7468 | lr=7.95e-03 | 111.6s | R@1=13.2/14.7 R@5=29.9/31.9 mR=28.4
+00:57:43 | INFO    | __main__ |   ↑ New best mean recall: 28.42
+00:59:56 | INFO    | __main__ | Epoch   4/20 | loss=1.6795 | lr=7.78e-03 | 110.5s | R@1=13.6/15.6 R@5=30.9/33.0 mR=29.3
+00:59:56 | INFO    | __main__ |   ↑ New best mean recall: 29.33
+01:02:04 | INFO    | __main__ | Epoch   5/20 | loss=1.6391 | lr=7.50e-03 | 106.7s | R@1=14.2/15.8 R@5=32.0/33.9 mR=30.1
+01:02:04 | INFO    | __main__ |   ↑ New best mean recall: 30.13
+01:04:14 | INFO    | __main__ | Epoch   6/20 | loss=1.6102 | lr=7.11e-03 | 109.0s | R@1=15.1/16.7 R@5=33.3/34.9 mR=31.3
+01:04:14 | INFO    | __main__ |   ↑ New best mean recall: 31.27
+01:06:25 | INFO    | __main__ | Epoch   7/20 | loss=1.5810 | lr=6.64e-03 | 110.8s | R@1=15.7/17.4 R@5=33.8/36.1 mR=32.1
+01:06:25 | INFO    | __main__ |   ↑ New best mean recall: 32.12
+01:08:36 | INFO    | __main__ | Epoch   8/20 | loss=1.5576 | lr=6.09e-03 | 110.6s | R@1=15.0/17.6 R@5=33.4/36.0 mR=31.9
+01:10:47 | INFO    | __main__ | Epoch   9/20 | loss=1.5277 | lr=5.48e-03 | 109.9s | R@1=16.0/18.0 R@5=34.6/36.9 mR=32.8
+01:10:47 | INFO    | __main__ |   ↑ New best mean recall: 32.82
+01:12:58 | INFO    | __main__ | Epoch  10/20 | loss=1.5036 | lr=4.82e-03 | 109.5s | R@1=16.0/18.1 R@5=34.7/37.0 mR=32.8
+01:12:58 | INFO    | __main__ |   ↑ New best mean recall: 32.83
+01:15:08 | INFO    | __main__ | Epoch  11/20 | loss=1.4813 | lr=4.14e-03 | 109.9s | R@1=15.7/18.0 R@5=34.5/37.0 mR=32.7
+01:17:09 | INFO    | __main__ | Epoch  12/20 | loss=1.4579 | lr=3.46e-03 | 101.8s | R@1=16.6/18.8 R@5=35.9/38.2 mR=33.9
+01:17:09 | INFO    | __main__ |   ↑ New best mean recall: 33.91
+01:19:10 | INFO    | __main__ | Epoch  13/20 | loss=1.4262 | lr=2.79e-03 | 100.9s | R@1=16.6/19.0 R@5=35.6/38.0 mR=33.7
+01:21:11 | INFO    | __main__ | Epoch  14/20 | loss=1.4012 | lr=2.16e-03 | 101.7s | R@1=16.5/19.0 R@5=35.7/38.2 mR=33.8
+01:23:14 | INFO    | __main__ | Epoch  15/20 | loss=1.3678 | lr=1.58e-03 | 102.9s | R@1=16.9/19.2 R@5=36.1/38.3 mR=34.1
+01:23:14 | INFO    | __main__ |   ↑ New best mean recall: 34.15
+01:25:13 | INFO    | __main__ | Epoch  16/20 | loss=1.3373 | lr=1.07e-03 | 99.5s | R@1=16.9/19.4 R@5=36.5/38.8 mR=34.4
+01:25:13 | INFO    | __main__ |   ↑ New best mean recall: 34.42
+01:27:14 | INFO    | __main__ | Epoch  17/20 | loss=1.3099 | lr=6.50e-04 | 101.1s | R@1=17.0/19.4 R@5=36.4/38.6 mR=34.4
+01:29:18 | INFO    | __main__ | Epoch  18/20 | loss=1.2832 | lr=3.26e-04 | 104.7s | R@1=16.6/19.4 R@5=36.2/38.3 mR=34.2
+01:31:22 | INFO    | __main__ | Epoch  19/20 | loss=1.2661 | lr=1.10e-04 | 103.6s | R@1=16.8/19.5 R@5=36.2/38.6 mR=34.3
+01:33:30 | INFO    | __main__ | Epoch  20/20 | loss=1.2502 | lr=8.20e-06 | 107.0s | R@1=16.8/19.5 R@5=36.2/38.5 mR=34.3

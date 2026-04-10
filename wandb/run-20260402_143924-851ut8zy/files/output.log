@@ -1,0 +1,3 @@
+14:39:39 | INFO    | __main__ | wandb logging enabled (project=bridge-anchors, run=1_2b_toktok_dual_1.0).
+14:39:39 | INFO    | __main__ | Starting training for 20 epochs...
+14:39:39 | INFO    | __main__ | Config: model=bridge_anchors K=128 bs=1024 lr=8.0e-03 temp=0.070 grad_clip=1.0 ortho=0.000 lb=0.000

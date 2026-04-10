@@ -36,3 +36,6 @@ Thumbs.db
 # Torch Hub cache
 .cache/
 freeze-align/
+
+# External repos
+STRUCTURE/

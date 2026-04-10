@@ -116,6 +116,8 @@ class FreezeAlignProjector(nn.Module):
         dim_txt: Text encoder output dimension (768 for MPNet).
         embed_dim: Shared projection dimension (768).
         init_temp: Initial temperature value (0.07).
+        img_input: ``'cls'`` for CLS-only or ``'tokens'`` for token-level images.
+        txt_input: ``'cls'`` for CLS-only or ``'tokens'`` for token-level text.
     """
 
     def __init__(
@@ -124,12 +126,16 @@ class FreezeAlignProjector(nn.Module):
         dim_txt: int = 768,
         embed_dim: int = 768,
         init_temp: float = 0.07,
+        img_input: str = "cls",
+        txt_input: str = "cls",
     ) -> None:
         super().__init__()
 
         self.dim_img = dim_img
         self.dim_txt = dim_txt
         self.embed_dim = embed_dim
+        self.img_input = img_input
+        self.txt_input = txt_input
 
         # --- Vision projectors ---
         # local_vision_proj: applied to ALL tokens, then patches mean-pooled
@@ -176,9 +182,11 @@ class FreezeAlignProjector(nn.Module):
         """Forward pass.
 
         Args:
-            img_emb: (B, dim_img) CLS-only or (B, T, dim_img) token-level.
-            txt_emb: (B, dim_txt) CLS-only or (B, S, dim_txt) token-level.
-            txt_mask: (B, S) attention mask. Required when txt_emb is 3D.
+            img_emb: (B, dim_img) when img_input='cls', or
+                (B, T, dim_img) when img_input='tokens'.
+            txt_emb: (B, dim_txt) when txt_input='cls', or
+                (B, S, dim_txt) when txt_input='tokens'.
+            txt_mask: (B, S) attention mask. Required when txt_input='tokens'.
 
         Returns:
             (image_feat, text_feat), both (B, embed_dim), L2-normalized.
@@ -188,10 +196,10 @@ class FreezeAlignProjector(nn.Module):
             self.temp.clamp_(0.001, 0.5)
 
         # --- Vision ---
-        if img_emb.ndim == 2:
-            # CLS-only: only cls_vision_proj
-            image_feat = self.cls_vision_proj(img_emb)
-        elif img_emb.ndim == 3:
+        if self.img_input == "tokens":
+            assert img_emb.ndim == 3, (
+                f"img_input='tokens' but got {img_emb.ndim}D tensor"
+            )
             # Token-level (reference order of operations):
             # 1. Extract CLS from ORIGINAL embeddings
             cls_token_orig = img_emb[:, 0, :]
@@ -204,16 +212,22 @@ class FreezeAlignProjector(nn.Module):
             # 5. Combine (both alphas = 1.0)
             image_feat = local_feat + cls_feat
         else:
-            raise ValueError(f"img_emb must be 2D or 3D, got {img_emb.ndim}D")
+            assert img_emb.ndim == 2, (
+                f"img_input='cls' but got {img_emb.ndim}D tensor"
+            )
+            # CLS-only: only cls_vision_proj
+            image_feat = self.cls_vision_proj(img_emb)
 
         # NO global vision projector — just normalize
         image_feat = F.normalize(image_feat, dim=-1)
 
         # --- Text ---
-        if txt_emb.ndim == 3:
-            # Token-level: local_text_proj -> masked mean pool -> text_proj
+        if self.txt_input == "tokens":
+            assert txt_emb.ndim == 3, (
+                f"txt_input='tokens' but got {txt_emb.ndim}D tensor"
+            )
             if txt_mask is None:
-                raise ValueError("txt_mask required when txt_emb is 3D")
+                raise ValueError("txt_mask required when txt_input='tokens'")
             # 1. Project ALL tokens (CLS included)
             txt_projected = self.local_text_proj(txt_emb)
             # 2. Attention-masked mean pooling (CLS included in pool)
@@ -222,11 +236,12 @@ class FreezeAlignProjector(nn.Module):
             txt_pooled = txt_pooled / txt_mask.sum(dim=1, keepdim=True).float().clamp(min=1)
             # 3. Apply text_proj MLP on pooled result
             text_feat = self.text_proj(txt_pooled)
-        elif txt_emb.ndim == 2:
+        else:
+            assert txt_emb.ndim == 2, (
+                f"txt_input='cls' but got {txt_emb.ndim}D tensor"
+            )
             # CLS-only: text_proj directly (skip local_text_proj)
             text_feat = self.text_proj(txt_emb)
-        else:
-            raise ValueError(f"txt_emb must be 2D or 3D, got {txt_emb.ndim}D")
 
         text_feat = F.normalize(text_feat, dim=-1)
 

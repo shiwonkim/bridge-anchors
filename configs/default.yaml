@@ -44,6 +44,6 @@ eval:
 
 # Logging
 logging:
-  log_dir: results/logs
   save_dir: results/checkpoints
   experiment_name: default
+  wandb_project: moa

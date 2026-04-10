@@ -1,0 +1,5 @@
+11:38:26 | INFO    | __main__ | wandb logging enabled (project=bridge-anchors, run=k512_cls_prior_init0.0).
+11:38:26 | INFO    | __main__ | Starting training for 20 epochs...
+11:38:26 | INFO    | __main__ | Config: model=bridge_anchors K=512 bs=1024 lr=8.0e-03 temp=0.070 grad_clip=1.0 ortho=0.000 lb=0.000
+11:40:25 | INFO    | __main__ | Epoch   1/20 | loss=3.0381 | lr=3.96e-03 | 95.3s | R@1=13.1/14.7 R@5=29.5/31.7 mR=28.1
+11:40:25 | INFO    | __main__ |   ↑ New best mean recall: 28.11
