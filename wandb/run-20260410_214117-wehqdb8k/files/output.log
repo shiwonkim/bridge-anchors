@@ -1,0 +1,5 @@
+21:41:18 | INFO    | __main__ | wandb logging enabled (project=HardRouteBA, run=hr_topk2_200ep_cos40).
+21:41:18 | INFO    | __main__ | Starting training for 200 epochs...
+21:41:18 | INFO    | __main__ | Config: model=hard_route K=512 bs=1024 lr=8.0e-03 temp=0.070 grad_clip=1.0 ortho=0.000 lb=0.000
+21:44:02 | INFO    | __main__ | Epoch   1/200 | loss=5.0847 | lr=3.96e-03 | 137.8s | R@1=2.3/4.0 R@5=6.5/10.6 mR=8.1
+21:44:02 | INFO    | __main__ |   ↑ New best mean recall: 8.12

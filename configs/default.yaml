@@ -46,4 +46,4 @@ eval:
 logging:
   save_dir: results/checkpoints
   experiment_name: default
-  wandb_project: moa
+  wandb_project: HybridPool

@@ -385,6 +385,90 @@ Tested 4 alternative projector designs. K=128, BS=256, LR=1e-3, COCO 118K CLS, F
 
 Details: `experiments/exp_shared_anchor/results_projector_sweep.md`
 
+### HardRoute-BA — COMPLETE (catastrophic failure)
+Hard-routing MoE: each token hard-assigned to 1 of G=4 experts via learned router with STE. G=4, K_g=128, proj_d=32, tok/tok CAP τ=0.05, COCO 118K, Flickr30k eval.
+
+| τ_route | lb_lambda | mR | Δ vs HME soft (42.27) |
+|---------|----------|------|------|
+| 0.5 | 0.01 | 29.81 | -12.46 |
+| 1.0 | 0.01 | 30.41 | -11.86 |
+| 2.0 | 0.01 | 30.93 | -11.34 |
+| 1.0 | 0.0 | 29.59 | -12.68 |
+| 1.0 | 0.1 | 30.07 | -11.20 |
+
+**-11 mR vs soft HME.** Each expert sees only 25% of tokens → profiles are poorly informed. STE gradient is noisy, router init is random. Hard token restriction catastrophically destroys information needed for discriminative profiles. **Definitively closes the "expert specialization via token restriction" direction.** All restriction-based approaches fail: hard masking (-2.68), soft CLS tiers (-0.37), hard routing (-11.34). Only HME soft (all-see-all, +0.77) works.
+
+Details: `experiments/exp_hard_route/results.md`
+
+### HardRoute-BA Extended — Top-1 vs Top-2 (200 epochs, cos40)
+Extended training with cosine-t-max=40 and patience=40 to find saturation. Top-2 routing doubles tokens per expert (50% vs 25%).
+
+| Config | Tokens/expert | Best epoch | mR | Δ vs HME soft (42.27) |
+|--------|--------------|-----------|------|------|
+| Top-1, 200 ep | ~25% | 41 | 31.62 | -10.65 |
+| **Top-2, 200 ep** | **~50%** | **41** | **37.62** | **-4.65** |
+| HME soft (ref) | 100% | 15 | 42.27 | — |
+
+**Top-2 >> Top-1 by +6.0 mR** — confirms information restriction is the bottleneck, not routing structure. Each +25% of tokens adds ~3 mR. Extended training helps top-1 modestly (+0.69 over 20-epoch). Neither triggered early stopping (both ran 200 ep). Validates HME soft design: experts need ALL tokens for discriminative profiles.
+
+**Bug found**: Both peaked at exactly epoch 41 (cosine bottom) then degraded — `CosineAnnealingLR` cycles past `T_max`, causing LR to rise back up and destroy learned representations. The mR curve mirrors the LR curve.
+
+Details: `experiments/exp_hard_route/results_extended.md`
+
+### HardRoute-BA Extended — LR Schedule Fix (clamp mode)
+Fixed `build_scheduler()` to support `--cosine-mode clamp` (LR holds at `--cosine-eta-min` after T_max) and `--cosine-mode restart` (warm restarts). Re-running top-1 and top-2 with clamp mode.
+
+| Config | LR schedule | Best epoch | mR | Δ vs broken |
+|--------|-----------|-----------|------|------|
+| Top-1, cos40 broken | cosine cycles past T_max | 41 | 31.62 | — |
+| **Top-1, cos40 clamp** | **cosine + hold at 1e-6** | **66** | **33.26** | **+1.64** |
+| Top-2, cos40 broken | cosine cycles past T_max | 41 | 37.62 | — |
+| **Top-2, cos40 clamp** | **cosine + hold at 1e-6** | **59** | **37.45** | **-0.17** |
+
+**LR clamp fix helps top-1 significantly (+1.64 mR), neutral for top-2 (-0.17).** Both peaked well past epoch 40 (at 66 and 59 respectively), confirming that clamping at eta_min allows continued fine-tuning. The broken schedule's LR rise after T_max=40 destroyed top-1's representations more than top-2's — likely because top-1 (25% tokens/expert) has a more fragile, information-sparse representation that's more sensitive to LR perturbation. Top-2 (50% tokens/expert) is more robust, so the cycling LR just couldn't improve past its natural optimum. Both still far below HME soft (42.27 mR) — the information restriction bottleneck remains the dominant factor, not the LR schedule.
+
+Details: `experiments/exp_hard_route/results_lr_fix.md`
+
+### HardRoute-BA — Diagnostic Analysis — COMPLETE
+
+Hard routing showed top-1=33.26, top-2=37.45 mR vs HME soft=42.27. Four analyses to understand the gap. Checkpoints: top-1 epoch 66, top-2 epoch 59, HME soft epoch 15. Script: `scripts/analyze_hard_route.py`.
+
+**1. Routing statistics:**
+
+| Model | Expert 0 | Expert 1 | Expert 2 | Expert 3 |
+|-------|----------|----------|----------|----------|
+| Top-1 | 23.2% | 31.0% | 28.5% | 17.4% |
+| Top-2 | 35.2% | 37.4% | 27.4% | **0.0%** |
+
+Top-1 is reasonably balanced. **Top-2 has a completely dead expert** (Expert 3 receives 0% of patches) — the router collapsed to 3 active experts despite having 4. Plot: `experiments/exp_hard_route/routing_visualization.png`
+
+**2. Per-expert retrieval (R@1-based mR per 128-dim sub-profile):**
+
+| Model | Exp 0 | Exp 1 | Exp 2 | Exp 3 | Range |
+|-------|-------|-------|-------|-------|-------|
+| Top-1 | 5.5 | 5.0 | 2.6 | 1.4 | 1.4–5.5 |
+| Top-2 | 3.8 | 4.2 | 7.3 | 5.2 | 3.8–7.3 |
+| **HME soft** | **6.9** | **8.5** | **7.3** | **7.3** | **6.9–8.5** |
+
+**HME soft experts are individually stronger AND more uniform.** Top-1 Expert 3 is near-dead (1.4 mR) with only 17% of tokens. Top-2's dead-routed Expert 3 still produces decent profiles (5.2 mR) because it processes all tokens through the projector+anchors despite receiving no routed patches — the CAP softmax distributes uniformly. Details: `experiments/exp_hard_route/per_expert_retrieval.md`
+
+**3. Attention pattern comparison:**
+Visual comparison of mean anchor attention heatmaps (Expert 0) across all three models. Plot: `experiments/exp_hard_route/attention_comparison.png`
+
+**4. Missed token analysis (Top-2 vs HME soft, Jaccard of top-16 patches):**
+
+| Expert | Mean Jaccard | Std |
+|--------|-------------|-----|
+| 0 | 0.059 | 0.066 |
+| 1 | 0.071 | 0.075 |
+| 2 | 0.079 | 0.077 |
+| 3 | 0.068 | 0.081 |
+| **Overall** | **0.069** | — |
+
+**Smoking gun: near-zero overlap (Jaccard=0.069).** Hard routing forces anchors to attend to **completely different patches** than HME soft's anchors. This isn't just token count restriction — the router assigns semantically important tokens to different experts than HME soft would naturally attend to, so every expert's anchors are forced onto suboptimal tokens. Details: `experiments/exp_hard_route/missed_token_analysis.md`
+
+**Conclusion:** Three mechanisms explain the -9 mR gap: (1) dead experts — top-2 loses 25% of capacity to a collapsed expert, (2) per-expert quality — restricted token pools produce weaker sub-profiles (avg 3.6 mR per expert for top-1 vs 7.5 for HME soft), (3) attention mismatch — hard routing forces anchors onto patches that differ almost entirely from what unconstrained CAP would choose (Jaccard=0.07). **Hard routing is definitively closed.**
+
 ### Hierarchical Multi-Expert (HME) — NEW PROJECT BEST
 G=4 experts, each with own projector + own K_g=128 anchors (total 512). KL diversity loss sweep. BA tok/tok CAP τ=0.05, COCO 118K, Flickr30k eval, seed=42.
 
@@ -431,11 +515,25 @@ Progressive test: CLS anchors, multi-expert projectors, soft mask. BA K=128 + pr
 
 Details: `experiments/exp_multi_expert/results.md`
 
+### Hybrid Anchor Pool — COMPLETE (negative result)
+Combine M fixed K-means centroids (buffers, no grad) with K learnable anchors → (M+K)-dim profile. CLS-only, COCO 118K, Flickr30k eval, BS=256, LR=1e-3, seed=42.
+
+| Config | Fixed (M) | Learn (K) | Total dim | Params | mR | Δ vs BA K=128 |
+|--------|----------|----------|-----------|--------|------|---------------|
+| BA K=128 (baseline) | 0 | 128 | 128 | 197K | 23.66 | — |
+| Fixed only M=128 | 128 | 0 | 128 | 0 | 0.0 | -23.66 |
+| Hybrid M=32 K=128 | 32 | 128 | 160 | 197K | 11.3 | -12.36 |
+| Hybrid M=64 K=128 | 64 | 128 | 192 | 197K | 7.4 | -16.26 |
+| Hybrid M=128 K=128 | 128 | 128 | 256 | 197K | 3.7 | -19.96 |
+| Hybrid M=256 K=128 | 256 | 128 | 384 | 197K | 1.5 | -22.16 |
+| Learn only K=256 | 0 | 256 | 256 | 393K | 24.0 | +0.34 |
+
+**Catastrophic negative result.** Fixed K-means centroids from independently trained encoders have zero cross-modal correspondence → inject noise. L2 normalization amplifies damage by stealing magnitude from learnable dimensions. More fixed = worse, monotonically. Fair comparison: hybrid M=128+K=128 (3.7 mR) vs learn-only K=256 (24.0 mR) at same 256-dim profile — 6.5× worse. **Validates core BA design: all anchors must be learnable.**
+
+Details: `experiments/exp_hybrid_pool/results_cls.md`
+
 ### Immediate next steps
 1. Test best combo at τ=0.03 K=512 (new project best?)
-2. 3-seed validation
-3. Paper writing
-4. Paper writing
 2. 3-seed validation (deferred until method finalized)
 3. Paper writing
 
@@ -591,6 +689,34 @@ Non-urgent ideas to potentially revisit later.
 ---
 
 Reverse-chronological record of development activity. Newest entries first.
+
+---
+
+## 2026-04-13 — Hybrid Anchor Pool (negative result)
+
+**What was done:**
+
+Implemented Hybrid Anchor Pool: M fixed data anchors (K-means centroids, registered as buffers) + K learnable anchors → concat → L2 norm → (M+K)-dim profile. Added `--fixed-anchors` CLI flag, `fixed_anchors`/`fixed_proto_img`/`fixed_proto_txt` params to `BridgeAnchorAligner`. K=0 fixed-only path supported (eval-only, no training). Updated eval utils for checkpoint auto-detection.
+
+**Code changes:**
+- `src/models/bridge_anchors.py`: Added `fixed_anchors_k`, `register_buffer` for fixed anchors, hybrid profile concatenation in forward() (CLS + CAP paths), K=0 guard for learnable anchor creation.
+- `src/train.py`: Added `--fixed-anchors` CLI arg, K-means centroid computation in `build_model()`, generalized eval-only guard (n_train_params == 0).
+- `src/eval/_utils.py`: Auto-detect `fixed_anchors_img`/`txt` from checkpoint state dict.
+- `configs/default.yaml` + `src/train.py`: Changed wandb_project to "HybridPool".
+
+**Results (CLS-only, COCO 118K, Flickr30k eval, seed=42):**
+
+| Config | M | K | dim | mR | Δ |
+|--------|---|---|-----|------|------|
+| BA K=128 (baseline) | 0 | 128 | 128 | 23.66 | — |
+| Hybrid M=32 K=128 | 32 | 128 | 160 | 11.3 | -12.4 |
+| Hybrid M=64 K=128 | 64 | 128 | 192 | 7.4 | -16.3 |
+| Hybrid M=128 K=128 | 128 | 128 | 256 | 3.7 | -20.0 |
+| Hybrid M=256 K=128 | 256 | 128 | 384 | 1.5 | -22.2 |
+| Fixed only M=128 K=0 | 128 | 0 | 128 | 0.0 | -23.7 |
+| Learn only K=256 | 0 | 256 | 256 | 24.0 | +0.3 |
+
+**Key finding:** Catastrophic negative result. K-means centroids computed independently per modality have zero cross-modal correspondence — they inject noise into the profile. L2 normalization amplifies damage by redistributing magnitude from informative learnable dimensions to uninformative fixed dimensions. More fixed anchors = worse, monotonically. At M=256+K=128, the model is near chance (1.5 mR). Validates that all anchors must be learnable in BA.
 
 ---
 

@@ -450,3 +450,267 @@ git.exc.GitCommandError: Cmd('git') failed due to: exit code(128)
 To add an exception for this directory, call:
 
 	git config --global --add safe.directory /workspace/bridge-anchors'
+2026-04-11 03:39:05 ERROR git root error
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/lib/gitlib.py", line 93, in root
+    return self.repo.git.rev_parse("--show-toplevel")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1003, in <lambda>
+    return lambda *args, **kwargs: self._call_process(name, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1616, in _call_process
+    return self.execute(call, **exec_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1406, in execute
+    raise GitCommandError(redacted_command, status, stderr_value, stdout_value)
+git.exc.GitCommandError: Cmd('git') failed due to: exit code(128)
+  cmdline: git rev-parse --show-toplevel
+  stderr: 'fatal: detected dubious ownership in repository at '/workspace/bridge-anchors'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /workspace/bridge-anchors'
+2026-04-11 03:39:16 ERROR git root error
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/lib/gitlib.py", line 93, in root
+    return self.repo.git.rev_parse("--show-toplevel")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1003, in <lambda>
+    return lambda *args, **kwargs: self._call_process(name, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1616, in _call_process
+    return self.execute(call, **exec_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1406, in execute
+    raise GitCommandError(redacted_command, status, stderr_value, stdout_value)
+git.exc.GitCommandError: Cmd('git') failed due to: exit code(128)
+  cmdline: git rev-parse --show-toplevel
+  stderr: 'fatal: detected dubious ownership in repository at '/workspace/bridge-anchors'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /workspace/bridge-anchors'
+2026-04-11 03:39:27 ERROR git root error
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/lib/gitlib.py", line 93, in root
+    return self.repo.git.rev_parse("--show-toplevel")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1003, in <lambda>
+    return lambda *args, **kwargs: self._call_process(name, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1616, in _call_process
+    return self.execute(call, **exec_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1406, in execute
+    raise GitCommandError(redacted_command, status, stderr_value, stdout_value)
+git.exc.GitCommandError: Cmd('git') failed due to: exit code(128)
+  cmdline: git rev-parse --show-toplevel
+  stderr: 'fatal: detected dubious ownership in repository at '/workspace/bridge-anchors'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /workspace/bridge-anchors'
+2026-04-11 03:39:37 ERROR git root error
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/lib/gitlib.py", line 93, in root
+    return self.repo.git.rev_parse("--show-toplevel")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1003, in <lambda>
+    return lambda *args, **kwargs: self._call_process(name, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1616, in _call_process
+    return self.execute(call, **exec_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1406, in execute
+    raise GitCommandError(redacted_command, status, stderr_value, stdout_value)
+git.exc.GitCommandError: Cmd('git') failed due to: exit code(128)
+  cmdline: git rev-parse --show-toplevel
+  stderr: 'fatal: detected dubious ownership in repository at '/workspace/bridge-anchors'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /workspace/bridge-anchors'
+2026-04-11 03:40:37 ERROR git root error
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/lib/gitlib.py", line 93, in root
+    return self.repo.git.rev_parse("--show-toplevel")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1003, in <lambda>
+    return lambda *args, **kwargs: self._call_process(name, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1616, in _call_process
+    return self.execute(call, **exec_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1406, in execute
+    raise GitCommandError(redacted_command, status, stderr_value, stdout_value)
+git.exc.GitCommandError: Cmd('git') failed due to: exit code(128)
+  cmdline: git rev-parse --show-toplevel
+  stderr: 'fatal: detected dubious ownership in repository at '/workspace/bridge-anchors'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /workspace/bridge-anchors'
+2026-04-11 03:40:37 ERROR Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/wandb/cli/cli.py", line 150, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/wandb/cli/cli.py", line 319, in login
+    wandb.login(
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/wandb_login.py", line 101, in login
+    logged_in, _ = _login(
+                   ^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/wandb_login.py", line 190, in _login
+    auth = _find_or_prompt_for_key(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/wandb_login.py", line 266, in _find_or_prompt_for_key
+    auth = wbauth.authenticate_session(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/lib/wbauth/authenticate.py", line 139, in authenticate_session
+    raise UsageError(
+wandb.errors.errors.UsageError: No API key configured. Use `wandb login` to log in.
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/wandb/cli/cli.py", line 150, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/wandb/cli/cli.py", line 319, in login
+    wandb.login(
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/wandb_login.py", line 101, in login
+    logged_in, _ = _login(
+                   ^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/wandb_login.py", line 190, in _login
+    auth = _find_or_prompt_for_key(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/wandb_login.py", line 266, in _find_or_prompt_for_key
+    auth = wbauth.authenticate_session(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/lib/wbauth/authenticate.py", line 139, in authenticate_session
+    raise UsageError(
+wandb.errors.errors.UsageError: No API key configured. Use `wandb login` to log in.
+2026-04-11 03:40:46 ERROR git root error
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/lib/gitlib.py", line 93, in root
+    return self.repo.git.rev_parse("--show-toplevel")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1003, in <lambda>
+    return lambda *args, **kwargs: self._call_process(name, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1616, in _call_process
+    return self.execute(call, **exec_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1406, in execute
+    raise GitCommandError(redacted_command, status, stderr_value, stdout_value)
+git.exc.GitCommandError: Cmd('git') failed due to: exit code(128)
+  cmdline: git rev-parse --show-toplevel
+  stderr: 'fatal: detected dubious ownership in repository at '/workspace/bridge-anchors'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /workspace/bridge-anchors'
+2026-04-11 03:41:43 ERROR git root error
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/lib/gitlib.py", line 93, in root
+    return self.repo.git.rev_parse("--show-toplevel")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1003, in <lambda>
+    return lambda *args, **kwargs: self._call_process(name, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1616, in _call_process
+    return self.execute(call, **exec_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1406, in execute
+    raise GitCommandError(redacted_command, status, stderr_value, stdout_value)
+git.exc.GitCommandError: Cmd('git') failed due to: exit code(128)
+  cmdline: git rev-parse --show-toplevel
+  stderr: 'fatal: detected dubious ownership in repository at '/workspace/bridge-anchors'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /workspace/bridge-anchors'
+2026-04-11 03:41:58 ERROR git root error
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/lib/gitlib.py", line 93, in root
+    return self.repo.git.rev_parse("--show-toplevel")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1003, in <lambda>
+    return lambda *args, **kwargs: self._call_process(name, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1616, in _call_process
+    return self.execute(call, **exec_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1406, in execute
+    raise GitCommandError(redacted_command, status, stderr_value, stdout_value)
+git.exc.GitCommandError: Cmd('git') failed due to: exit code(128)
+  cmdline: git rev-parse --show-toplevel
+  stderr: 'fatal: detected dubious ownership in repository at '/workspace/bridge-anchors'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /workspace/bridge-anchors'
+2026-04-11 03:42:10 ERROR git root error
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/lib/gitlib.py", line 93, in root
+    return self.repo.git.rev_parse("--show-toplevel")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1003, in <lambda>
+    return lambda *args, **kwargs: self._call_process(name, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1616, in _call_process
+    return self.execute(call, **exec_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1406, in execute
+    raise GitCommandError(redacted_command, status, stderr_value, stdout_value)
+git.exc.GitCommandError: Cmd('git') failed due to: exit code(128)
+  cmdline: git rev-parse --show-toplevel
+  stderr: 'fatal: detected dubious ownership in repository at '/workspace/bridge-anchors'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /workspace/bridge-anchors'
+2026-04-11 03:43:22 ERROR git root error
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/lib/gitlib.py", line 93, in root
+    return self.repo.git.rev_parse("--show-toplevel")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1003, in <lambda>
+    return lambda *args, **kwargs: self._call_process(name, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1616, in _call_process
+    return self.execute(call, **exec_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1406, in execute
+    raise GitCommandError(redacted_command, status, stderr_value, stdout_value)
+git.exc.GitCommandError: Cmd('git') failed due to: exit code(128)
+  cmdline: git rev-parse --show-toplevel
+  stderr: 'fatal: detected dubious ownership in repository at '/workspace/bridge-anchors'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /workspace/bridge-anchors'
+2026-04-11 07:05:07 ERROR git root error
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/lib/gitlib.py", line 93, in root
+    return self.repo.git.rev_parse("--show-toplevel")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1003, in <lambda>
+    return lambda *args, **kwargs: self._call_process(name, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1616, in _call_process
+    return self.execute(call, **exec_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1406, in execute
+    raise GitCommandError(redacted_command, status, stderr_value, stdout_value)
+git.exc.GitCommandError: Cmd('git') failed due to: exit code(128)
+  cmdline: git rev-parse --show-toplevel
+  stderr: 'fatal: detected dubious ownership in repository at '/workspace/bridge-anchors'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /workspace/bridge-anchors'
+2026-04-13 00:56:31 ERROR git root error
+Traceback (most recent call last):
+  File "/opt/conda/lib/python3.11/site-packages/wandb/sdk/lib/gitlib.py", line 93, in root
+    return self.repo.git.rev_parse("--show-toplevel")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1003, in <lambda>
+    return lambda *args, **kwargs: self._call_process(name, *args, **kwargs)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1616, in _call_process
+    return self.execute(call, **exec_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/conda/lib/python3.11/site-packages/git/cmd.py", line 1406, in execute
+    raise GitCommandError(redacted_command, status, stderr_value, stdout_value)
+git.exc.GitCommandError: Cmd('git') failed due to: exit code(128)
+  cmdline: git rev-parse --show-toplevel
+  stderr: 'fatal: detected dubious ownership in repository at '/workspace/bridge-anchors'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /workspace/bridge-anchors'

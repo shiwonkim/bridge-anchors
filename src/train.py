@@ -22,7 +22,12 @@ import torch
 import torch.nn.functional as F
 import yaml
 from torch.optim import Adam
-from torch.optim.lr_scheduler import CosineAnnealingLR, LambdaLR, SequentialLR
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR,
+    CosineAnnealingWarmRestarts,
+    LambdaLR,
+    SequentialLR,
+)
 from torch.utils.data import DataLoader
 
 from src.data.coco_dataset import PairedEmbeddingDataset
@@ -123,6 +128,8 @@ def apply_cli_overrides(cfg: dict[str, Any], args: argparse.Namespace) -> None:
         cfg["training"]["diversity_sigma"] = args.diversity_sigma
     if getattr(args, "recon_lambda", None) is not None:
         cfg["training"]["recon_lambda"] = args.recon_lambda
+    if getattr(args, "lb_route_lambda", None) is not None:
+        cfg["training"]["lb_route_lambda"] = args.lb_route_lambda
     if args.top_k is not None:
         cfg["model"]["top_k"] = args.top_k
     if args.experiment_name is not None:
@@ -417,6 +424,31 @@ def build_model(
                     ds_for_init, num_anchors, seed,
                 )
 
+        # --- Fixed anchors (Hybrid Anchor Pool) ---
+        fixed_anchors = getattr(args, "fixed_anchors", 0)
+        fixed_proto_img, fixed_proto_txt = None, None
+        if fixed_anchors > 0:
+            # Compute K-means centroids for fixed anchors
+            fa_ds = ds_for_init
+            if fa_ds is None:
+                cls_dir = PROJECT_ROOT / "data" / "embeddings" / "cls"
+                logger.info(
+                    "Loading CLS embeddings for fixed anchor K-means "
+                    "(M=%d)...", fixed_anchors,
+                )
+                fa_ds = PairedEmbeddingDataset(
+                    img_emb_path=cls_dir / "coco_train_img.pt",
+                    txt_emb_path=cls_dir / "coco_train_txt.pt",
+                    seed=seed,
+                )
+            logger.info(
+                "Computing %d K-means centroids for fixed anchors...",
+                fixed_anchors,
+            )
+            fixed_proto_img, fixed_proto_txt = _compute_kmeans_centroids(
+                fa_ds, fixed_anchors, seed,
+            )
+
         model = BridgeAnchorAligner(
             dim_img=dim_img,
             dim_txt=dim_txt,
@@ -442,6 +474,9 @@ def build_model(
             expert_soft_mask=getattr(args, "expert_soft_mask", False),
             expert_k=getattr(args, "expert_k", 0),
             recon_loss=getattr(args, "recon_loss", False),
+            fixed_anchors=fixed_anchors,
+            fixed_proto_img=fixed_proto_img,
+            fixed_proto_txt=fixed_proto_txt,
             img_input=args.img_input,
             txt_input=args.txt_input,
             ca_exclude_cls=getattr(args, "ca_exclude_cls", False),
@@ -469,6 +504,21 @@ def build_model(
         model = FreezeAlignProjector(
             dim_img=dim_img, dim_txt=dim_txt,
             img_input=args.img_input, txt_input=args.txt_input,
+        )
+
+    elif model_name == "hard_route":
+        from src.models.hard_route_ba import HardRouteBridgeAnchors
+        model = HardRouteBridgeAnchors(
+            dim_img=dim_img,
+            dim_txt=dim_txt,
+            num_experts=getattr(args, "num_experts", 4),
+            expert_k=getattr(args, "expert_k", 128),
+            projector_dim=getattr(args, "projector_dim", 32),
+            pool_temperature=getattr(args, "pool_temperature", 0.05),
+            route_temperature=getattr(args, "route_temperature", 1.0),
+            top_k_route=getattr(args, "top_k_route", 1),
+            img_input=args.img_input,
+            txt_input=args.txt_input,
         )
 
     elif model_name == "shared_anchor":
@@ -675,6 +725,9 @@ def build_scheduler(
     epochs: int,
     warmup_epochs: int,
     steps_per_epoch: int,
+    cosine_t_max_epochs: int = 0,
+    cosine_mode: str = "clamp",
+    cosine_eta_min: float = 1e-6,
 ) -> torch.optim.lr_scheduler._LRScheduler:
     """Cosine annealing with linear warmup.
 
@@ -683,6 +736,12 @@ def build_scheduler(
         epochs: Total training epochs.
         warmup_epochs: Number of warmup epochs (linear ramp from 0 to lr).
         steps_per_epoch: Number of optimiser steps per epoch.
+        cosine_t_max_epochs: If > 0, cosine cycle length in epochs (instead
+            of spanning all training epochs).
+        cosine_mode: Behaviour after cosine reaches minimum at T_max.
+            "clamp" — LR stays at eta_min for remaining epochs.
+            "restart" — LR cycles back up (warm restarts).
+        cosine_eta_min: Minimum LR at cosine bottom. Avoids LR=0.
 
     Returns:
         A scheduler that should be stepped once per optimiser step.
@@ -690,23 +749,54 @@ def build_scheduler(
     warmup_steps = warmup_epochs * steps_per_epoch
     total_steps = epochs * steps_per_epoch
 
+    if cosine_t_max_epochs > 0:
+        cosine_steps = cosine_t_max_epochs * steps_per_epoch - warmup_steps
+    else:
+        cosine_steps = total_steps - warmup_steps
+
+    base_lr = optimizer.defaults["lr"]
+
+    # Build a flat list of (scheduler, phase_length) pairs to avoid
+    # nesting SequentialLR (PyTorch doesn't support it).
+    phases: list[torch.optim.lr_scheduler._LRScheduler] = []
+    milestones: list[int] = []
+    cursor = 0
+
+    # Phase 1 (optional): linear warmup
     if warmup_steps > 0:
-        warmup_scheduler = LambdaLR(
+        phases.append(LambdaLR(
             optimizer,
             lr_lambda=lambda step: min(1.0, (step + 1) / warmup_steps),
-        )
-        cosine_scheduler = CosineAnnealingLR(
-            optimizer, T_max=total_steps - warmup_steps,
-        )
-        scheduler = SequentialLR(
-            optimizer,
-            schedulers=[warmup_scheduler, cosine_scheduler],
-            milestones=[warmup_steps],
-        )
-    else:
-        scheduler = CosineAnnealingLR(optimizer, T_max=total_steps)
+        ))
+        cursor += warmup_steps
+        milestones.append(cursor)
 
-    return scheduler
+    # Phase 2: cosine decay
+    if cosine_t_max_epochs > 0 and cosine_mode == "restart":
+        phases.append(CosineAnnealingWarmRestarts(
+            optimizer, T_0=cosine_steps, T_mult=1, eta_min=cosine_eta_min,
+        ))
+        # Restart covers all remaining steps — no phase 3
+    else:
+        phases.append(CosineAnnealingLR(
+            optimizer, T_max=cosine_steps, eta_min=cosine_eta_min,
+        ))
+        cursor += cosine_steps
+
+        # Phase 3 (optional): constant at eta_min after cosine finishes
+        if cosine_t_max_epochs > 0 and cosine_mode == "clamp":
+            remaining = total_steps - cursor
+            if remaining > 0:
+                milestones.append(cursor)
+                phases.append(LambdaLR(
+                    optimizer,
+                    lr_lambda=lambda step: cosine_eta_min / base_lr,
+                ))
+
+    # Assemble
+    if len(phases) == 1:
+        return phases[0]
+    return SequentialLR(optimizer, schedulers=phases, milestones=milestones)
 
 
 # ---------------------------------------------------------------------------
@@ -727,7 +817,7 @@ class MetricsLogger:
             import wandb
 
             project = cfg.get("logging", {}).get(
-                "wandb_project", "moa",
+                "wandb_project", "HybridPool",
             )
             # Allow env-var override
             project = os.environ.get("WANDB_PROJECT", project)
@@ -795,6 +885,7 @@ def train_one_epoch(
     diversity_sigma: float = 0.2,
     diversity_modality: str = "both",
     recon_lambda: float = 0.0,
+    lb_route_lambda: float = 0.0,
     num_experts: int = 1,
     *,
     is_chunked: bool = False,
@@ -830,7 +921,8 @@ def train_one_epoch(
     total_ca = 0.0
     total_diversity = 0.0
     total_recon = 0.0
-    # Per-expert monitoring totals (HME mode only)
+    total_lb_route = 0.0
+    # Per-expert monitoring totals (HME/HardRoute mode)
     per_expert_recon: list[float] = []
     per_expert_infonce: list[float] = []
     per_expert_attn_entropy: list[float] = []
@@ -838,6 +930,7 @@ def train_one_epoch(
 
     has_anchors = hasattr(model, "anchors_img")
     is_anchor_mediated = getattr(model, "anchor_mediated", False)
+    is_hard_route = hasattr(model, "router_img")
     need_raw_sims = (lb_lambda > 0 or pa_lambda > 0) and has_anchors and not is_anchor_mediated
     need_token_sims = (
         token_match_lambda > 0
@@ -893,7 +986,23 @@ def train_one_epoch(
         if txt_cls_attn is not None:
             fwd_kwargs["txt_cls_attn"] = txt_cls_attn
 
-        if is_anchor_mediated:
+        # HardRoute-BA has its own forward path
+        sg_img = sg_txt = hg_img = hg_txt = None
+        ep_img_hr = ep_txt_hr = None
+        if is_hard_route:
+            need_route = lb_route_lambda > 0
+            fwd_hr: dict[str, Any] = {}
+            if mask_for_model is not None:
+                fwd_hr["txt_mask"] = mask_for_model
+            fwd_hr["return_routing"] = need_route
+            out = model(img_emb, txt_for_model, **fwd_hr)
+            if need_route:
+                (b_img, b_txt, sg_img, sg_txt, hg_img, hg_txt,
+                 ep_img_hr, ep_txt_hr) = out
+            else:
+                b_img, b_txt = out
+
+        elif is_anchor_mediated:
             out = model(img_emb, txt_for_model, **fwd_kwargs)
             if len(out) == 4:
                 p_img, p_txt, b_cls_img, b_cls_txt = out
@@ -1014,6 +1123,36 @@ def train_one_epoch(
                 loss = loss + diversity_lambda * div_loss
                 diversity_loss_val = div_loss.item()
 
+        # --- Hard-route load balancing loss ---
+        lb_route_loss_val = 0.0
+        if is_hard_route and lb_route_lambda > 0 and sg_img is not None:
+            from src.models.losses import routing_load_balance_loss
+            lb_img = routing_load_balance_loss(sg_img, hg_img)
+            txt_mask_rest = mask_for_model[:, 1:] if mask_for_model is not None else None
+            lb_txt = routing_load_balance_loss(sg_txt, hg_txt, mask=txt_mask_rest)
+            lb_route = (lb_img + lb_txt) / 2
+            loss = loss + lb_route_lambda * lb_route
+            lb_route_loss_val = lb_route.item()
+
+        # --- Hard-route per-expert monitoring ---
+        if is_hard_route and ep_img_hr is not None:
+            with torch.no_grad():
+                G_hr = len(ep_img_hr)
+                if not per_expert_infonce:
+                    per_expert_infonce = [0.0] * G_hr
+                    per_expert_recon = [0.0] * G_hr
+                    per_expert_attn_entropy = [0.0] * G_hr
+                for g in range(G_hr):
+                    p_img_g = F.normalize(ep_img_hr[g], dim=-1)
+                    p_txt_g = F.normalize(ep_txt_hr[g], dim=-1)
+                    nce_g = info_nce_loss(p_img_g, p_txt_g, temperature=effective_temp)
+                    per_expert_infonce[g] += nce_g.item()
+                # Expert token fracs (image)
+                if hg_img is not None:
+                    fracs = hg_img.detach().mean(dim=[0, 1])  # (G,)
+                    for g in range(G_hr):
+                        per_expert_attn_entropy[g] += fracs[g].item()
+
         recon_loss_val = 0.0
         if need_expert_profiles and hasattr(model, "decoders_img"):
             # Targets: detached, L2-normalized CLS embeddings of original encoder
@@ -1097,6 +1236,7 @@ def train_one_epoch(
         total_ca += ca_loss_val
         total_diversity += diversity_loss_val
         total_recon += recon_loss_val
+        total_lb_route += lb_route_loss_val
         num_batches += 1
 
     avg_loss = total_loss / max(num_batches, 1)
@@ -1118,6 +1258,8 @@ def train_one_epoch(
         result["diversity_loss"] = total_diversity / max(num_batches, 1)
     if recon_lambda > 0:
         result["recon_loss"] = total_recon / max(num_batches, 1)
+    if lb_route_lambda > 0:
+        result["lb_route_loss"] = total_lb_route / max(num_batches, 1)
     # Per-expert monitoring metrics
     if per_expert_infonce:
         nb = max(num_batches, 1)
@@ -1255,9 +1397,10 @@ def main() -> None:
             args.group_taus,
         )
 
-    # FixedRelativeRep has no learnable params — eval-only
-    if model_name == "fixed_relative_rep":
-        logger.info("FixedRelativeRep has no trainable parameters. Running evaluation only.")
+    # No learnable params — eval-only (FixedRelativeRep or fixed-only hybrid)
+    n_train_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    if model_name == "fixed_relative_rep" or n_train_params == 0:
+        logger.info("Model has no trainable parameters (%d fixed). Running evaluation only.", n_train_params)
         model.eval()
         with torch.no_grad():
             if flickr_img is not None:
@@ -1308,6 +1451,9 @@ def main() -> None:
     )
     scheduler = build_scheduler(
         optimizer, epochs, cfg["training"]["warmup_epochs"], steps_per_epoch,
+        cosine_t_max_epochs=getattr(args, "cosine_t_max", 0),
+        cosine_mode=getattr(args, "cosine_mode", "clamp"),
+        cosine_eta_min=getattr(args, "cosine_eta_min", 1e-6),
     )
 
     # --- Metrics logger (wandb) ---
@@ -1341,12 +1487,16 @@ def main() -> None:
     diversity_lambda = cfg["training"].get("diversity_lambda", 0.0)
     diversity_sigma = cfg["training"].get("diversity_sigma", 0.2)
     recon_lambda = cfg["training"].get("recon_lambda", 0.0)
+    lb_route_lambda = cfg["training"].get("lb_route_lambda", 0.0)
     img_token_level = (args.img_input == "tokens")
     eval_every = cfg["eval"]["eval_every"]
 
     # --- Training loop ---
     best_mean_recall = 0.0
     best_epoch = 0
+    epochs_without_improvement = 0
+    patience = getattr(args, "patience", 0)
+    min_delta = getattr(args, "min_delta", 0.0)
     logger.info("Starting training for %d epochs...", epochs)
     logger.info(
         "Config: model=%s K=%s bs=%d lr=%.1e temp=%.3f grad_clip=%.1f ortho=%.3f lb=%.3f",
@@ -1378,6 +1528,7 @@ def main() -> None:
             diversity_sigma=diversity_sigma,
             diversity_modality=getattr(args, "diversity_modality", "both"),
             recon_lambda=recon_lambda,
+            lb_route_lambda=lb_route_lambda,
             num_experts=getattr(args, "num_experts", 1),
             is_chunked=(train_chunked is not None),
             txt_token_level=txt_token_level,
@@ -1395,7 +1546,7 @@ def main() -> None:
         }
         for aux_key in ("ortho_loss", "iso_loss", "lb_loss", "pa_loss",
                         "token_match_loss", "ca_loss", "diversity_loss",
-                        "recon_loss"):
+                        "recon_loss", "lb_route_loss"):
             if aux_key in train_metrics:
                 log_dict[f"train/{aux_key}"] = train_metrics[aux_key]
         # Per-expert monitoring metrics
@@ -1479,9 +1630,10 @@ def main() -> None:
             cfg,
             save_dir / "latest.pt",
         )
-        if retrieval_metrics and retrieval_metrics["mean_recall"] > best_mean_recall:
+        if retrieval_metrics and retrieval_metrics["mean_recall"] > best_mean_recall + min_delta:
             best_mean_recall = retrieval_metrics["mean_recall"]
             best_epoch = epoch
+            epochs_without_improvement = 0
             save_checkpoint(
                 model, optimizer, scheduler, epoch,
                 retrieval_metrics,
@@ -1489,6 +1641,16 @@ def main() -> None:
                 save_dir / "best.pt",
             )
             logger.info("  ↑ New best mean recall: %.2f", best_mean_recall)
+        elif retrieval_metrics:
+            epochs_without_improvement += 1
+
+        # Early stopping
+        if patience > 0 and epochs_without_improvement >= patience:
+            logger.info(
+                "Early stopping at epoch %d (no improvement for %d epochs, best=%.2f at epoch %d)",
+                epoch, patience, best_mean_recall, best_epoch,
+            )
+            break
 
     # --- Final summary ---
     metrics_logger.set_summary("best_mean_recall", best_mean_recall)
@@ -1516,7 +1678,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model", type=str, default=None,
         choices=["bridge_anchors", "linear_projection", "mlp_projection",
-                 "fixed_relative_rep", "freeze_align", "shared_anchor"],
+                 "fixed_relative_rep", "freeze_align", "shared_anchor",
+                 "hard_route"],
         help="Model type (overrides config).",
     )
     parser.add_argument(
@@ -1682,6 +1845,19 @@ def parse_args() -> argparse.Namespace:
         help="Which modalities to apply HME diversity loss on.",
     )
     parser.add_argument(
+        "--route-temperature", type=float, default=1.0,
+        help="Router softmax temperature for HardRoute-BA.",
+    )
+    parser.add_argument(
+        "--top-k-route", type=int, default=1,
+        help="Number of experts each token is routed to (HardRoute-BA). "
+             "1 = standard top-1, 2 = each token goes to 2 experts.",
+    )
+    parser.add_argument(
+        "--lb-route-lambda", type=float, default=None,
+        help="Load balancing loss weight for HardRoute-BA routing.",
+    )
+    parser.add_argument(
         "--recon-loss", action="store_true", default=False,
         help="Enable per-expert reconstruction decoders (ReconBA).",
     )
@@ -1698,6 +1874,12 @@ def parse_args() -> argparse.Namespace:
         "--profile-proj-dim", type=int, default=0,
         help="Bottleneck dim for residual MLP projector on K-dim profile. "
              "0 = off (default). Mutually exclusive with --stacked-anchors-dim.",
+    )
+    parser.add_argument(
+        "--fixed-anchors", type=int, default=0,
+        help="Number of fixed data anchors (K-means centroids) for Hybrid "
+             "Anchor Pool. 0 = disabled (default). When > 0, M fixed anchors "
+             "are concatenated with K learnable anchors for (M+K)-dim profile.",
     )
     parser.add_argument(
         "--attn-mask-groups", nargs="+", type=int, default=None,
@@ -1755,6 +1937,29 @@ def parse_args() -> argparse.Namespace:
         "--embedding-dir", type=str, default=None,
         help="Custom embedding directory (contains chunks, CLS, and Flickr files). "
              "Overrides the default data/embeddings/all_tokens + cls dirs.",
+    )
+    parser.add_argument(
+        "--cosine-t-max", type=int, default=0,
+        help="Cosine cycle length in epochs. 0 = span full training. "
+             "When > 0, behaviour after T_max controlled by --cosine-mode.",
+    )
+    parser.add_argument(
+        "--cosine-mode", type=str, default="clamp",
+        choices=["clamp", "restart"],
+        help="Behaviour after cosine reaches minimum at T_max. "
+             "'clamp' holds LR at eta_min; 'restart' cycles back up.",
+    )
+    parser.add_argument(
+        "--cosine-eta-min", type=float, default=1e-6,
+        help="Minimum LR at cosine bottom (default: 1e-6). Avoids LR=0.",
+    )
+    parser.add_argument(
+        "--patience", type=int, default=0,
+        help="Early stopping patience (epochs without improvement). 0 = disabled.",
+    )
+    parser.add_argument(
+        "--min-delta", type=float, default=0.0,
+        help="Minimum mR improvement to count as an improvement for early stopping.",
     )
     parser.add_argument(
         "--gpu", type=int, default=None,

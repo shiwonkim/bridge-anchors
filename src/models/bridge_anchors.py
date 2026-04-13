@@ -128,6 +128,9 @@ class BridgeAnchorAligner(nn.Module):
         expert_soft_mask: bool = False,
         expert_k: int = 0,
         recon_loss: bool = False,
+        fixed_anchors: int = 0,
+        fixed_proto_img: torch.Tensor | None = None,
+        fixed_proto_txt: torch.Tensor | None = None,
     ) -> None:
         super().__init__()
         self.dim_img = dim_img
@@ -164,8 +167,9 @@ class BridgeAnchorAligner(nn.Module):
         # Learnable anchors: (K, dim_img) and (K, dim_txt)
         # In HME mode (expert_k > 0), per-expert anchors are created below
         # and the shared anchors_img/txt are unused dead weight, so skip them.
+        # When num_anchors=0 (fixed-only mode), no learnable anchors needed.
         self._is_hme = (expert_k > 0 and num_experts > 1)
-        if not self._is_hme:
+        if not self._is_hme and num_anchors > 0:
             self.anchors_img = nn.Parameter(torch.empty(num_anchors, dim_img))
             self.anchors_txt = nn.Parameter(torch.empty(num_anchors, dim_txt))
             self._init_anchors(init_method, proto_img, proto_txt)
@@ -330,6 +334,23 @@ class BridgeAnchorAligner(nn.Module):
             self.decoders_txt = nn.ModuleList([
                 ProfileDecoder(expert_k, dim_txt) for _ in range(num_experts)
             ])
+
+        # --- Hybrid Anchor Pool: fixed data anchors (K-means centroids) ---
+        self.fixed_anchors_k = fixed_anchors
+        if fixed_anchors > 0:
+            if fixed_proto_img is None or fixed_proto_txt is None:
+                raise ValueError(
+                    "fixed_proto_img and fixed_proto_txt required when "
+                    f"fixed_anchors={fixed_anchors}"
+                )
+            self.register_buffer(
+                "fixed_anchors_img",
+                F.normalize(fixed_proto_img.clone(), dim=-1),
+            )
+            self.register_buffer(
+                "fixed_anchors_txt",
+                F.normalize(fixed_proto_txt.clone(), dim=-1),
+            )
 
     def _init_anchors(
         self,
@@ -722,8 +743,8 @@ class BridgeAnchorAligner(nn.Module):
             txt_emb = self.proj_txt(txt_emb)
 
         # L2-normalise anchors (on the forward pass so gradients flow
-        # through the original parameters). Not used in HME mode.
-        if self._is_hme:
+        # through the original parameters). Not used in HME mode or K=0.
+        if self._is_hme or self.num_anchors == 0:
             a_img = a_txt = None
         else:
             a_img = F.normalize(self.anchors_img, dim=-1)  # (K, dim_img)
@@ -968,7 +989,7 @@ class BridgeAnchorAligner(nn.Module):
             raw_img = torch.cat(raw_img_parts, dim=-1)
             raw_txt = torch.cat(raw_txt_parts, dim=-1)
 
-        else:
+        elif self.num_anchors > 0:
             # --- Single-expert path (original) ---
             raw_img, sim_img = self._compute_profile(
                 img_emb, a_img, pool=img_pool,
@@ -985,11 +1006,57 @@ class BridgeAnchorAligner(nn.Module):
                 gate_emb=txt_gate_emb,
                 is_img=False,
             )
+        else:
+            # K=0 fixed-only mode: no learnable profile, raw will be set
+            # by the fixed anchor block below
+            raw_img = None
+            raw_txt = None
 
         # Optional top-k sparse gating (straight-through estimator)
         if self.top_k > 0 and self.top_k < self.num_anchors:
             raw_img = self._sparse_topk(raw_img, self.top_k)
             raw_txt = self._sparse_topk(raw_txt, self.top_k)
+
+        # --- Hybrid Anchor Pool: concatenate fixed data-anchor profiles ---
+        if self.fixed_anchors_k > 0:
+            fa_img = self.fixed_anchors_img  # (M, D) buffer, no grad
+            fa_txt = self.fixed_anchors_txt  # (M, D) buffer, no grad
+
+            if self.img_input == "tokens" and img_emb_orig.dim() == 3:
+                # Token-level: use same pooling as learnable anchors
+                img_for_fixed = img_emb_orig
+                if self.projector_dim > 0 and self.num_experts <= 1:
+                    img_for_fixed = img_emb  # already projected
+                fixed_raw_img, _ = self._compute_profile(
+                    img_for_fixed, fa_img, pool=img_pool,
+                    cls_attn=img_cls_attn,
+                    cls_attn_betas=None,  # no learnable betas for fixed
+                )
+            else:
+                # CLS-only: simple cosine
+                fixed_raw_img = F.normalize(img_emb, dim=-1) @ fa_img.T
+
+            if self.txt_input == "tokens" and txt_emb_orig.dim() == 3:
+                txt_for_fixed = txt_emb_orig
+                if self.projector_dim > 0 and self.num_experts <= 1:
+                    txt_for_fixed = txt_emb  # already projected
+                fixed_raw_txt, _ = self._compute_profile(
+                    txt_for_fixed, fa_txt, pool=txt_pool,
+                    mask=txt_mask if self.txt_input == "tokens" else None,
+                    cls_attn=txt_cls_attn,
+                    cls_attn_betas=None,
+                )
+            else:
+                fixed_raw_txt = F.normalize(txt_emb, dim=-1) @ fa_txt.T
+
+            if raw_img is not None and self.num_anchors > 0:
+                # Hybrid: concat fixed + learnable
+                raw_img = torch.cat([fixed_raw_img, raw_img], dim=-1)
+                raw_txt = torch.cat([fixed_raw_txt, raw_txt], dim=-1)
+            else:
+                # Fixed-only (K=0): use fixed profiles only
+                raw_img = fixed_raw_img
+                raw_txt = fixed_raw_txt
 
         # L2-normalise token profile
         b_img = F.normalize(raw_img, dim=-1)  # (B, K_t)
@@ -1085,10 +1152,13 @@ class BridgeAnchorAligner(nn.Module):
         proj_str = ""
         if self.projector_dim > 0:
             proj_str = f", projector_dim={self.projector_dim}"
+        fixed_str = ""
+        if self.fixed_anchors_k > 0:
+            fixed_str = f", fixed_anchors={self.fixed_anchors_k}"
         return (
             f"dim_img={self.dim_img}, dim_txt={self.dim_txt}, "
             f"num_anchors={self.num_anchors}, init_method='{self.init_method}'"
             f"{top_k_str}{pool_str}{temp_str}{prior_str}{ca_cls_str}{am_str}"
-            f"{proj_str}, "
+            f"{proj_str}{fixed_str}, "
             f"img_input='{self.img_input}', txt_input='{self.txt_input}'"
         )

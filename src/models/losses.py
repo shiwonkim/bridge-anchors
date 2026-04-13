@@ -376,3 +376,37 @@ def reconstruction_loss(
         total = total + F.mse_loss(recon_img, target_img)
         total = total + F.mse_loss(recon_txt, target_txt)
     return total / G
+
+
+def routing_load_balance_loss(
+    soft_gate: torch.Tensor,
+    hard_gate: torch.Tensor,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Switch Transformer-style load balancing loss for hard routing.
+
+    Encourages equal token distribution across experts.
+    L = G * sum_g(f_g * p_g)
+    where f_g = fraction of tokens assigned to expert g (hard)
+          p_g = average routing probability for expert g (soft)
+
+    Args:
+        soft_gate: (B, T, G) soft routing probabilities.
+        hard_gate: (B, T, G) hard one-hot assignment.
+        mask: (B, T) optional padding mask, 1=valid 0=pad.
+
+    Returns:
+        Scalar load balancing loss.
+    """
+    if mask is not None:
+        n_valid = mask.sum().clamp(min=1)
+        hard_masked = hard_gate * mask.unsqueeze(-1)
+        soft_masked = soft_gate * mask.unsqueeze(-1)
+        f = hard_masked.sum(dim=[0, 1]) / n_valid
+        p = soft_masked.sum(dim=[0, 1]) / n_valid
+    else:
+        f = hard_gate.mean(dim=[0, 1])
+        p = soft_gate.mean(dim=[0, 1])
+
+    G = soft_gate.shape[-1]
+    return G * (f * p).sum()

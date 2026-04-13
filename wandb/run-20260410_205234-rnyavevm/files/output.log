@@ -1,0 +1,13 @@
+20:52:37 | INFO    | __main__ | wandb logging enabled (project=HardRouteBA, run=hr_topk2_200ep_cos40).
+20:52:37 | INFO    | __main__ | Starting training for 200 epochs...
+20:52:37 | INFO    | __main__ | Config: model=hard_route K=512 bs=1024 lr=8.0e-03 temp=0.070 grad_clip=1.0 ortho=0.000 lb=0.000
+20:55:19 | INFO    | __main__ | Epoch   1/200 | loss=5.0847 | lr=3.96e-03 | 135.6s | R@1=2.3/4.0 R@5=6.5/10.6 mR=8.1
+20:55:19 | INFO    | __main__ |   ↑ New best mean recall: 8.12
+20:58:07 | INFO    | __main__ | Epoch   2/200 | loss=3.2798 | lr=7.89e-03 | 140.3s | R@1=1.1/2.3 R@5=3.4/6.7 mR=4.8
+/opt/conda/lib/python3.11/site-packages/torch/optim/lr_scheduler.py:232: UserWarning: The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible. Please use `scheduler.step()` to step the scheduler. During the deprecation, if epoch is different from None, the closed form is used instead of the new chainable form, where available. Please open an issue if you are unable to replicate your use case: https://github.com/pytorch/pytorch/issues/new/choose.
+  warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
+21:00:47 | INFO    | __main__ | Epoch   3/200 | loss=3.7101 | lr=7.99e-03 | 130.2s | R@1=1.1/2.1 R@5=3.2/6.5 mR=4.7
+21:03:34 | INFO    | __main__ | Epoch   4/200 | loss=3.6934 | lr=7.95e-03 | 139.9s | R@1=1.2/1.9 R@5=3.6/5.7 mR=4.5
+21:06:29 | INFO    | __main__ | Epoch   5/200 | loss=3.5115 | lr=7.88e-03 | 145.1s | R@1=1.3/2.2 R@5=4.0/6.3 mR=4.9
+21:09:16 | INFO    | __main__ | Epoch   6/200 | loss=3.6037 | lr=7.79e-03 | 141.1s | R@1=1.8/2.5 R@5=5.3/7.3 mR=6.0
+21:12:07 | INFO    | __main__ | Epoch   7/200 | loss=3.4498 | lr=7.68e-03 | 143.9s | R@1=2.9/3.1 R@5=8.2/8.7 mR=8.0

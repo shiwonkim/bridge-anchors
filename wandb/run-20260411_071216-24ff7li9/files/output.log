@@ -1,0 +1,141 @@
+07:12:17 | INFO    | __main__ | wandb logging enabled (project=HardRouteBA, run=hr_topk2_cos40_clamp).
+07:12:18 | INFO    | __main__ | Starting training for 200 epochs...
+07:12:18 | INFO    | __main__ | Config: model=hard_route K=512 bs=1024 lr=8.0e-03 temp=0.070 grad_clip=1.0 ortho=0.000 lb=0.000
+07:15:04 | INFO    | __main__ | Epoch   1/200 | loss=5.0847 | lr=3.96e-03 | 142.1s | R@1=2.3/4.0 R@5=6.5/10.6 mR=8.1
+07:15:04 | INFO    | __main__ |   ↑ New best mean recall: 8.12
+07:18:16 | INFO    | __main__ | Epoch   2/200 | loss=3.2798 | lr=7.89e-03 | 161.1s | R@1=1.1/2.3 R@5=3.4/6.7 mR=4.8
+/opt/conda/lib/python3.11/site-packages/torch/optim/lr_scheduler.py:232: UserWarning: The epoch parameter in `scheduler.step()` was not necessary and is being deprecated where possible. Please use `scheduler.step()` to step the scheduler. During the deprecation, if epoch is different from None, the closed form is used instead of the new chainable form, where available. Please open an issue if you are unable to replicate your use case: https://github.com/pytorch/pytorch/issues/new/choose.
+  warnings.warn(EPOCH_DEPRECATION_WARNING, UserWarning)
+07:21:02 | INFO    | __main__ | Epoch   3/200 | loss=3.7706 | lr=7.99e-03 | 139.0s | R@1=0.8/1.2 R@5=2.8/3.6 mR=3.1
+07:23:49 | INFO    | __main__ | Epoch   4/200 | loss=3.6815 | lr=7.95e-03 | 140.2s | R@1=1.0/1.7 R@5=3.2/5.2 mR=4.0
+07:26:24 | INFO    | __main__ | Epoch   5/200 | loss=3.7255 | lr=7.88e-03 | 130.2s | R@1=2.5/3.5 R@5=7.4/9.5 mR=8.0
+07:28:57 | INFO    | __main__ | Epoch   6/200 | loss=3.5289 | lr=7.79e-03 | 129.0s | R@1=1.4/2.6 R@5=4.7/7.9 mR=5.9
+07:31:32 | INFO    | __main__ | Epoch   7/200 | loss=3.6856 | lr=7.68e-03 | 130.7s | R@1=1.8/3.5 R@5=5.3/10.0 mR=7.3
+07:34:06 | INFO    | __main__ | Epoch   8/200 | loss=3.4730 | lr=7.54e-03 | 129.9s | R@1=2.8/3.7 R@5=8.1/9.9 mR=8.5
+07:34:06 | INFO    | __main__ |   ↑ New best mean recall: 8.49
+07:36:41 | INFO    | __main__ | Epoch   9/200 | loss=3.5720 | lr=7.38e-03 | 130.3s | R@1=1.8/2.7 R@5=5.5/7.7 mR=6.3
+07:39:16 | INFO    | __main__ | Epoch  10/200 | loss=3.5877 | lr=7.19e-03 | 130.3s | R@1=0.4/0.8 R@5=1.5/2.7 mR=2.1
+07:41:51 | INFO    | __main__ | Epoch  11/200 | loss=3.4391 | lr=6.99e-03 | 130.6s | R@1=2.6/3.6 R@5=7.7/9.9 mR=8.3
+07:44:27 | INFO    | __main__ | Epoch  12/200 | loss=3.2387 | lr=6.76e-03 | 132.6s | R@1=2.8/4.7 R@5=8.0/12.8 mR=9.8
+07:44:27 | INFO    | __main__ |   ↑ New best mean recall: 9.78
+07:47:04 | INFO    | __main__ | Epoch  13/200 | loss=3.2974 | lr=6.52e-03 | 132.1s | R@1=3.8/4.5 R@5=10.8/11.9 mR=10.7
+07:47:04 | INFO    | __main__ |   ↑ New best mean recall: 10.68
+07:49:38 | INFO    | __main__ | Epoch  14/200 | loss=2.9781 | lr=6.26e-03 | 130.5s | R@1=2.9/4.4 R@5=8.1/11.6 mR=9.3
+07:52:11 | INFO    | __main__ | Epoch  15/200 | loss=2.9697 | lr=5.98e-03 | 129.6s | R@1=4.1/5.3 R@5=11.3/14.0 mR=11.8
+07:52:11 | INFO    | __main__ |   ↑ New best mean recall: 11.85
+07:54:48 | INFO    | __main__ | Epoch  16/200 | loss=2.8042 | lr=5.70e-03 | 130.3s | R@1=3.7/4.3 R@5=10.4/11.9 mR=10.4
+07:57:25 | INFO    | __main__ | Epoch  17/200 | loss=2.7723 | lr=5.40e-03 | 130.8s | R@1=4.8/5.5 R@5=12.5/14.3 mR=12.6
+07:57:25 | INFO    | __main__ |   ↑ New best mean recall: 12.61
+08:00:08 | INFO    | __main__ | Epoch  18/200 | loss=2.7753 | lr=5.09e-03 | 138.6s | R@1=5.3/5.9 R@5=13.8/15.4 mR=13.5
+08:00:08 | INFO    | __main__ |   ↑ New best mean recall: 13.53
+08:02:47 | INFO    | __main__ | Epoch  19/200 | loss=2.6891 | lr=4.77e-03 | 133.4s | R@1=4.9/5.6 R@5=13.0/14.5 mR=12.8
+08:05:23 | INFO    | __main__ | Epoch  20/200 | loss=2.6672 | lr=4.45e-03 | 131.6s | R@1=4.8/6.0 R@5=13.0/15.4 mR=13.2
+08:07:59 | INFO    | __main__ | Epoch  21/200 | loss=2.6405 | lr=4.13e-03 | 131.2s | R@1=5.5/6.0 R@5=14.3/15.0 mR=13.7
+08:07:59 | INFO    | __main__ |   ↑ New best mean recall: 13.69
+08:10:30 | INFO    | __main__ | Epoch  22/200 | loss=2.5910 | lr=3.80e-03 | 127.3s | R@1=5.5/6.3 R@5=14.4/16.4 mR=14.4
+08:10:30 | INFO    | __main__ |   ↑ New best mean recall: 14.35
+08:13:02 | INFO    | __main__ | Epoch  23/200 | loss=2.5696 | lr=3.48e-03 | 126.8s | R@1=5.8/6.5 R@5=14.8/16.5 mR=14.6
+08:13:02 | INFO    | __main__ |   ↑ New best mean recall: 14.57
+08:15:34 | INFO    | __main__ | Epoch  24/200 | loss=2.5383 | lr=3.16e-03 | 127.8s | R@1=5.6/6.2 R@5=14.7/16.1 mR=14.3
+08:18:06 | INFO    | __main__ | Epoch  25/200 | loss=2.4588 | lr=2.85e-03 | 127.4s | R@1=6.6/7.3 R@5=16.7/18.2 mR=16.2
+08:18:07 | INFO    | __main__ |   ↑ New best mean recall: 16.24
+08:20:38 | INFO    | __main__ | Epoch  26/200 | loss=2.4461 | lr=2.54e-03 | 126.7s | R@1=6.4/6.8 R@5=16.2/17.0 mR=15.4
+08:23:09 | INFO    | __main__ | Epoch  27/200 | loss=2.4379 | lr=2.24e-03 | 126.6s | R@1=6.8/7.6 R@5=16.6/18.4 mR=16.3
+08:23:09 | INFO    | __main__ |   ↑ New best mean recall: 16.34
+08:25:39 | INFO    | __main__ | Epoch  28/200 | loss=2.4015 | lr=1.96e-03 | 126.1s | R@1=7.3/8.3 R@5=18.7/20.2 mR=18.1
+08:25:39 | INFO    | __main__ |   ↑ New best mean recall: 18.05
+08:28:11 | INFO    | __main__ | Epoch  29/200 | loss=2.3678 | lr=1.69e-03 | 127.4s | R@1=7.7/8.5 R@5=18.8/20.3 mR=18.1
+08:30:43 | INFO    | __main__ | Epoch  30/200 | loss=2.2822 | lr=1.43e-03 | 127.7s | R@1=8.3/9.4 R@5=20.2/21.8 mR=19.5
+08:30:43 | INFO    | __main__ |   ↑ New best mean recall: 19.52
+08:33:13 | INFO    | __main__ | Epoch  31/200 | loss=2.2601 | lr=1.19e-03 | 126.4s | R@1=8.8/9.9 R@5=21.2/22.9 mR=20.4
+08:33:13 | INFO    | __main__ |   ↑ New best mean recall: 20.36
+08:35:43 | INFO    | __main__ | Epoch  32/200 | loss=2.2086 | lr=9.67e-04 | 125.3s | R@1=10.0/10.8 R@5=23.5/24.6 mR=22.1
+08:35:43 | INFO    | __main__ |   ↑ New best mean recall: 22.14
+08:38:12 | INFO    | __main__ | Epoch  33/200 | loss=2.1276 | lr=7.66e-04 | 125.6s | R@1=9.9/10.6 R@5=23.4/24.3 mR=22.0
+08:40:40 | INFO    | __main__ | Epoch  34/200 | loss=2.0935 | lr=5.86e-04 | 123.9s | R@1=11.4/12.8 R@5=26.0/28.2 mR=25.0
+08:40:40 | INFO    | __main__ |   ↑ New best mean recall: 25.00
+08:43:09 | INFO    | __main__ | Epoch  35/200 | loss=2.0357 | lr=4.28e-04 | 124.8s | R@1=12.4/13.9 R@5=28.1/29.8 mR=26.6
+08:43:09 | INFO    | __main__ |   ↑ New best mean recall: 26.61
+08:45:36 | INFO    | __main__ | Epoch  36/200 | loss=1.9321 | lr=2.94e-04 | 122.9s | R@1=13.3/15.1 R@5=29.5/31.6 mR=28.0
+08:45:36 | INFO    | __main__ |   ↑ New best mean recall: 28.03
+08:48:07 | INFO    | __main__ | Epoch  37/200 | loss=1.8649 | lr=1.85e-04 | 125.4s | R@1=14.6/16.4 R@5=31.7/34.1 mR=30.2
+08:48:07 | INFO    | __main__ |   ↑ New best mean recall: 30.24
+08:50:40 | INFO    | __main__ | Epoch  38/200 | loss=1.7673 | lr=1.00e-04 | 128.7s | R@1=16.2/18.5 R@5=34.5/37.0 mR=32.8
+08:50:40 | INFO    | __main__ |   ↑ New best mean recall: 32.81
+08:53:21 | INFO    | __main__ | Epoch  39/200 | loss=1.6653 | lr=4.12e-05 | 135.8s | R@1=18.0/20.4 R@5=37.2/39.8 mR=35.3
+08:53:21 | INFO    | __main__ |   ↑ New best mean recall: 35.30
+08:55:55 | INFO    | __main__ | Epoch  40/200 | loss=1.5210 | lr=8.36e-06 | 128.8s | R@1=19.1/21.5 R@5=38.9/41.6 mR=36.9
+08:55:56 | INFO    | __main__ |   ↑ New best mean recall: 36.88
+08:58:29 | INFO    | __main__ | Epoch  41/200 | loss=1.4175 | lr=1.00e-06 | 128.8s | R@1=19.2/21.8 R@5=39.2/41.9 mR=37.2
+08:58:29 | INFO    | __main__ |   ↑ New best mean recall: 37.22
+09:01:01 | INFO    | __main__ | Epoch  42/200 | loss=1.3990 | lr=1.00e-06 | 128.6s | R@1=19.2/21.9 R@5=39.3/42.1 mR=37.3
+09:01:01 | INFO    | __main__ |   ↑ New best mean recall: 37.29
+09:03:31 | INFO    | __main__ | Epoch  43/200 | loss=1.3943 | lr=1.00e-06 | 126.0s | R@1=19.1/21.9 R@5=39.3/42.0 mR=37.3
+09:06:01 | INFO    | __main__ | Epoch  44/200 | loss=1.3897 | lr=1.00e-06 | 125.7s | R@1=19.2/21.8 R@5=39.4/42.1 mR=37.3
+09:06:01 | INFO    | __main__ |   ↑ New best mean recall: 37.31
+09:08:31 | INFO    | __main__ | Epoch  45/200 | loss=1.3856 | lr=1.00e-06 | 125.7s | R@1=19.2/21.9 R@5=39.3/42.1 mR=37.3
+09:11:01 | INFO    | __main__ | Epoch  46/200 | loss=1.3848 | lr=1.00e-06 | 126.0s | R@1=19.2/21.9 R@5=39.4/42.1 mR=37.3
+09:11:01 | INFO    | __main__ |   ↑ New best mean recall: 37.34
+09:13:30 | INFO    | __main__ | Epoch  47/200 | loss=1.3849 | lr=1.00e-06 | 125.5s | R@1=19.2/21.9 R@5=39.4/42.1 mR=37.3
+09:15:58 | INFO    | __main__ | Epoch  48/200 | loss=1.3828 | lr=1.00e-06 | 122.9s | R@1=19.2/21.9 R@5=39.4/42.1 mR=37.4
+09:15:58 | INFO    | __main__ |   ↑ New best mean recall: 37.35
+09:18:27 | INFO    | __main__ | Epoch  49/200 | loss=1.3805 | lr=1.00e-06 | 124.6s | R@1=19.2/21.9 R@5=39.4/42.1 mR=37.3
+09:20:56 | INFO    | __main__ | Epoch  50/200 | loss=1.3772 | lr=1.00e-06 | 124.7s | R@1=19.2/21.9 R@5=39.5/42.1 mR=37.4
+09:20:56 | INFO    | __main__ |   ↑ New best mean recall: 37.36
+09:23:26 | INFO    | __main__ | Epoch  51/200 | loss=1.3758 | lr=1.00e-06 | 125.7s | R@1=19.2/21.9 R@5=39.5/42.1 mR=37.4
+09:23:26 | INFO    | __main__ |   ↑ New best mean recall: 37.37
+09:25:55 | INFO    | __main__ | Epoch  52/200 | loss=1.3752 | lr=1.00e-06 | 125.6s | R@1=19.2/21.9 R@5=39.5/42.1 mR=37.4
+09:25:56 | INFO    | __main__ |   ↑ New best mean recall: 37.39
+09:28:25 | INFO    | __main__ | Epoch  53/200 | loss=1.3718 | lr=1.00e-06 | 125.8s | R@1=19.3/21.9 R@5=39.5/42.1 mR=37.4
+09:28:25 | INFO    | __main__ |   ↑ New best mean recall: 37.40
+09:30:55 | INFO    | __main__ | Epoch  54/200 | loss=1.3707 | lr=1.00e-06 | 125.3s | R@1=19.3/21.9 R@5=39.5/42.1 mR=37.4
+09:33:29 | INFO    | __main__ | Epoch  55/200 | loss=1.3708 | lr=1.00e-06 | 128.9s | R@1=19.3/21.9 R@5=39.5/42.2 mR=37.4
+09:33:29 | INFO    | __main__ |   ↑ New best mean recall: 37.40
+09:37:03 | INFO    | __main__ | Epoch  56/200 | loss=1.3690 | lr=1.00e-06 | 188.1s | R@1=19.3/21.9 R@5=39.5/42.1 mR=37.4
+09:40:05 | INFO    | __main__ | Epoch  57/200 | loss=1.3659 | lr=1.00e-06 | 157.2s | R@1=19.3/21.9 R@5=39.5/42.1 mR=37.4
+09:40:05 | INFO    | __main__ |   ↑ New best mean recall: 37.43
+09:42:58 | INFO    | __main__ | Epoch  58/200 | loss=1.3675 | lr=1.00e-06 | 147.9s | R@1=19.4/21.9 R@5=39.6/42.1 mR=37.5
+09:42:58 | INFO    | __main__ |   ↑ New best mean recall: 37.45
+09:45:34 | INFO    | __main__ | Epoch  59/200 | loss=1.3667 | lr=1.00e-06 | 130.9s | R@1=19.3/21.9 R@5=39.6/42.2 mR=37.5
+09:45:34 | INFO    | __main__ |   ↑ New best mean recall: 37.45
+09:48:06 | INFO    | __main__ | Epoch  60/200 | loss=1.3632 | lr=1.00e-06 | 128.0s | R@1=19.3/21.9 R@5=39.5/42.1 mR=37.4
+09:50:37 | INFO    | __main__ | Epoch  61/200 | loss=1.3638 | lr=1.00e-06 | 126.0s | R@1=19.3/22.0 R@5=39.5/42.2 mR=37.4
+09:53:08 | INFO    | __main__ | Epoch  62/200 | loss=1.3616 | lr=1.00e-06 | 127.2s | R@1=19.3/22.0 R@5=39.5/42.2 mR=37.4
+09:55:39 | INFO    | __main__ | Epoch  63/200 | loss=1.3634 | lr=1.00e-06 | 127.0s | R@1=19.3/22.0 R@5=39.5/42.1 mR=37.4
+09:58:11 | INFO    | __main__ | Epoch  64/200 | loss=1.3588 | lr=1.00e-06 | 127.8s | R@1=19.3/22.0 R@5=39.5/42.1 mR=37.4
+10:00:44 | INFO    | __main__ | Epoch  65/200 | loss=1.3597 | lr=1.00e-06 | 129.1s | R@1=19.3/22.0 R@5=39.5/42.1 mR=37.4
+10:03:16 | INFO    | __main__ | Epoch  66/200 | loss=1.3567 | lr=1.00e-06 | 128.3s | R@1=19.3/22.0 R@5=39.4/42.1 mR=37.4
+10:05:52 | INFO    | __main__ | Epoch  67/200 | loss=1.3554 | lr=1.00e-06 | 130.8s | R@1=19.3/21.9 R@5=39.5/42.1 mR=37.4
+10:08:42 | INFO    | __main__ | Epoch  68/200 | loss=1.3570 | lr=1.00e-06 | 144.3s | R@1=19.3/21.9 R@5=39.4/42.1 mR=37.4
+10:11:17 | INFO    | __main__ | Epoch  69/200 | loss=1.3530 | lr=1.00e-06 | 130.5s | R@1=19.4/22.0 R@5=39.5/42.0 mR=37.4
+10:13:58 | INFO    | __main__ | Epoch  70/200 | loss=1.3538 | lr=1.00e-06 | 136.4s | R@1=19.3/22.0 R@5=39.5/42.0 mR=37.4
+10:16:28 | INFO    | __main__ | Epoch  71/200 | loss=1.3543 | lr=1.00e-06 | 126.4s | R@1=19.3/22.0 R@5=39.5/42.0 mR=37.4
+10:19:01 | INFO    | __main__ | Epoch  72/200 | loss=1.3536 | lr=1.00e-06 | 128.4s | R@1=19.3/21.9 R@5=39.5/42.0 mR=37.4
+10:21:36 | INFO    | __main__ | Epoch  73/200 | loss=1.3518 | lr=1.00e-06 | 130.6s | R@1=19.4/21.9 R@5=39.5/42.1 mR=37.4
+10:24:13 | INFO    | __main__ | Epoch  74/200 | loss=1.3494 | lr=1.00e-06 | 132.8s | R@1=19.4/22.0 R@5=39.5/42.1 mR=37.4
+10:26:51 | INFO    | __main__ | Epoch  75/200 | loss=1.3497 | lr=1.00e-06 | 133.4s | R@1=19.3/22.0 R@5=39.6/42.1 mR=37.4
+10:29:28 | INFO    | __main__ | Epoch  76/200 | loss=1.3473 | lr=1.00e-06 | 131.9s | R@1=19.4/21.9 R@5=39.5/42.1 mR=37.4
+10:32:10 | INFO    | __main__ | Epoch  77/200 | loss=1.3481 | lr=1.00e-06 | 137.1s | R@1=19.3/22.0 R@5=39.6/42.1 mR=37.4
+10:34:54 | INFO    | __main__ | Epoch  78/200 | loss=1.3465 | lr=1.00e-06 | 138.1s | R@1=19.4/21.9 R@5=39.5/42.1 mR=37.4
+10:38:14 | INFO    | __main__ | Epoch  79/200 | loss=1.3456 | lr=1.00e-06 | 176.3s | R@1=19.3/21.9 R@5=39.5/42.0 mR=37.4
+10:40:49 | INFO    | __main__ | Epoch  80/200 | loss=1.3439 | lr=1.00e-06 | 130.9s | R@1=19.3/21.9 R@5=39.5/42.1 mR=37.4
+10:43:50 | INFO    | __main__ | Epoch  81/200 | loss=1.3455 | lr=1.00e-06 | 156.7s | R@1=19.4/22.0 R@5=39.5/42.0 mR=37.4
+10:46:41 | INFO    | __main__ | Epoch  82/200 | loss=1.3440 | lr=1.00e-06 | 146.2s | R@1=19.4/21.9 R@5=39.6/42.0 mR=37.4
+10:49:20 | INFO    | __main__ | Epoch  83/200 | loss=1.3439 | lr=1.00e-06 | 132.9s | R@1=19.4/22.0 R@5=39.6/42.0 mR=37.4
+10:52:48 | INFO    | __main__ | Epoch  84/200 | loss=1.3415 | lr=1.00e-06 | 183.8s | R@1=19.4/21.9 R@5=39.6/42.0 mR=37.4
+10:55:21 | INFO    | __main__ | Epoch  85/200 | loss=1.3399 | lr=1.00e-06 | 128.8s | R@1=19.4/21.9 R@5=39.6/42.1 mR=37.4
+10:58:12 | INFO    | __main__ | Epoch  86/200 | loss=1.3389 | lr=1.00e-06 | 146.5s | R@1=19.4/21.9 R@5=39.6/42.0 mR=37.4
+11:00:52 | INFO    | __main__ | Epoch  87/200 | loss=1.3394 | lr=1.00e-06 | 135.8s | R@1=19.4/21.9 R@5=39.6/42.0 mR=37.4
+11:03:38 | INFO    | __main__ | Epoch  88/200 | loss=1.3389 | lr=1.00e-06 | 141.3s | R@1=19.3/21.9 R@5=39.6/42.0 mR=37.4
+11:06:31 | INFO    | __main__ | Epoch  89/200 | loss=1.3390 | lr=1.00e-06 | 147.8s | R@1=19.4/21.9 R@5=39.6/42.1 mR=37.4
+11:09:28 | INFO    | __main__ | Epoch  90/200 | loss=1.3376 | lr=1.00e-06 | 152.9s | R@1=19.3/21.9 R@5=39.5/42.0 mR=37.3
+11:12:11 | INFO    | __main__ | Epoch  91/200 | loss=1.3371 | lr=1.00e-06 | 139.5s | R@1=19.4/21.9 R@5=39.5/41.9 mR=37.3
+11:14:41 | INFO    | __main__ | Epoch  92/200 | loss=1.3341 | lr=1.00e-06 | 125.8s | R@1=19.4/21.8 R@5=39.6/41.9 mR=37.4
+11:17:50 | INFO    | __main__ | Epoch  93/200 | loss=1.3344 | lr=1.00e-06 | 165.0s | R@1=19.4/21.8 R@5=39.5/42.0 mR=37.3
+11:21:37 | INFO    | __main__ | Epoch  94/200 | loss=1.3332 | lr=1.00e-06 | 201.9s | R@1=19.4/21.8 R@5=39.6/41.9 mR=37.4
+11:24:26 | INFO    | __main__ | Epoch  95/200 | loss=1.3341 | lr=1.00e-06 | 144.3s | R@1=19.3/21.7 R@5=39.6/42.0 mR=37.3
+11:27:32 | INFO    | __main__ | Epoch  96/200 | loss=1.3324 | lr=1.00e-06 | 160.0s | R@1=19.4/21.8 R@5=39.5/42.0 mR=37.3
+11:30:11 | INFO    | __main__ | Epoch  97/200 | loss=1.3319 | lr=1.00e-06 | 135.0s | R@1=19.4/21.8 R@5=39.5/42.0 mR=37.3
+11:32:59 | INFO    | __main__ | Epoch  98/200 | loss=1.3303 | lr=1.00e-06 | 142.9s | R@1=19.5/21.8 R@5=39.6/41.9 mR=37.3
+11:35:37 | INFO    | __main__ | Epoch  99/200 | loss=1.3307 | lr=1.00e-06 | 133.3s | R@1=19.4/21.8 R@5=39.6/41.9 mR=37.3
+11:35:37 | INFO    | __main__ | Early stopping at epoch 99 (no improvement for 40 epochs, best=37.45 at epoch 59)

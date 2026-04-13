@@ -68,6 +68,14 @@ def load_model_from_checkpoint(
         proj_dim = 0
         if has_projector:
             proj_dim = state_dict["proj_img.down.weight"].shape[0]
+        # Detect fixed anchors (Hybrid Anchor Pool)
+        has_fixed = "fixed_anchors_img" in state_dict
+        fixed_anchors = 0
+        fixed_proto_img, fixed_proto_txt = None, None
+        if has_fixed:
+            fixed_proto_img = state_dict["fixed_anchors_img"]
+            fixed_proto_txt = state_dict["fixed_anchors_txt"]
+            fixed_anchors = fixed_proto_img.shape[0]
         model: torch.nn.Module = BridgeAnchorAligner(
             dim_img=cfg["model"]["dim_img"],
             dim_txt=cfg["model"]["dim_txt"],
@@ -75,6 +83,9 @@ def load_model_from_checkpoint(
             learnable_tau=has_learnable_tau,
             cls_attn_prior="additive" if has_cls_attn_betas else "none",
             projector_dim=proj_dim,
+            fixed_anchors=fixed_anchors,
+            fixed_proto_img=fixed_proto_img,
+            fixed_proto_txt=fixed_proto_txt,
         )
     elif model_name == "linear_projection":
         model = LinearProjection(
