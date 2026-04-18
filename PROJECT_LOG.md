@@ -532,10 +532,128 @@ Combine M fixed K-means centroids (buffers, no grad) with K learnable anchors �
 
 Details: `experiments/exp_hybrid_pool/results_cls.md`
 
+### Hybrid Anchor Pool — Paired fix (still negative)
+Re-ran with paired anchor selection: K-means on image space → nearest real sample → take paired (img, txt). Guarantees index-level cross-modal correspondence. CLS-only, COCO 118K, Flickr30k eval, BS=256, LR=1e-3, seed=42.
+
+**M sweep (paired K-means + K=128 learnable):**
+
+| M | K | dim | mR | Δ vs baseline | Δ vs unpaired |
+|---|---|-----|------|---------------|---------------|
+| 0 | 128 | 128 | 23.66 | — | — |
+| 32 | 128 | 160 | 16.68 | -6.98 | +5.36 |
+| 64 | 128 | 192 | 13.15 | -10.51 | +5.75 |
+| 128 | 128 | 256 | 9.44 | -14.22 | +5.74 |
+| 256 | 128 | 384 | 6.55 | -17.11 | +5.09 |
+
+**Sampling method comparison (M=128):**
+
+| Method | mR | Δ vs baseline |
+|--------|------|---------------|
+| FPS paired | 10.99 | -12.67 |
+| K-means paired | 9.44 | -14.22 |
+| Random paired | 9.53 | -14.13 |
+
+**Fixed paired only (M=128, K=0):** 1.1 mR (vs 0.0 unpaired — pairing gives nonzero but still near chance).
+
+**Pairing adds a consistent +5.5 mR over unpaired** by restoring cross-modal correspondence, but **all configs remain far below pure learnable baselines** (-7 to -17 mR). The core issue is L2 norm dilution: fixed dimensions steal magnitude from learnable ones. Even with perfect correspondence, fixed anchors measure "which data cluster" not "how to discriminate this sample" — gradient optimization positions learnable anchors for contrastive discrimination, which data selection cannot achieve. **Hybrid Anchor Pool definitively closed.**
+
+Details: `experiments/exp_hybrid_pool/results_paired.md`
+
+### Hybrid Anchor Pool — Norm strategies (weighted recovers baseline by ignoring fixed)
+Tested separate and weighted normalization to prevent L2 dilution. Paired K-means, CLS-only, COCO 118K, Flickr30k eval, seed=42.
+
+| Norm | M | K | mR | Δ vs baseline (23.66) | Δ vs joint |
+|------|---|---|------|------|------|
+| joint | 64 | 128 | 13.15 | -10.51 | — |
+| joint | 128 | 128 | 9.44 | -14.22 | — |
+| separate | 64 | 128 | 14.34 | -9.32 | +1.19 |
+| separate | 128 | 128 | 15.86 | -7.80 | +6.42 |
+| **weighted** | **64** | **128** | **23.23** | **-0.43** | **+10.08** |
+| **weighted** | **128** | **128** | **23.28** | **-0.38** | **+13.84** |
+
+**Weighted norm recovers baseline (23.2 vs 23.66) by learning α→0.15** — the model downweights fixed dims to 15% of learnable dims. Both M=64 and M=128 converge to the same α and mR, meaning M doesn't matter once alpha compensates. α monotonically decreases, never finding a sweet spot — proves fixed paired anchors add zero unique discriminative information. Separate norm helps partially (+1 to +6 mR) but still far from baseline. **Hybrid Anchor Pool exhaustively closed:** unpaired (catastrophic), paired (still negative), separate norm (partial), weighted (baseline recovery by ignoring fixed). No configuration improves over pure learnable anchors.
+
+Details: `experiments/exp_hybrid_pool/results_norm.md`
+
+### Feature Dimension Split — COMPLETE (negative result)
+Multi-head-style feature splitting: each anchor group measures cosine similarity in a D/G-dim subspace. CLS-only, COCO 118K, Flickr30k eval, seed=42.
+
+| Config | G | K/group | Total K | D/group | Params | mR | Δ vs std |
+|--------|---|---------|---------|---------|--------|------|------|
+| Standard K=512 | 1 | 512 | 512 | 768 | 786K | ~24.08 | — |
+| Split G=2 | 2 | 256 | 512 | 384 | 393K | 21.44 | -2.64 |
+| Split G=4 | 4 | 128 | 512 | 192 | 197K | 17.10 | -6.98 |
+| Split G=8 | 8 | 64 | 512 | 96 | 98K | 11.37 | -12.71 |
+| Split G=4 (param-match) | 4 | 512 | 2048 | 192 | 786K | 17.11 | -6.97 |
+
+**All configs worse than standard BA.** More groups = worse. Param-matched G=4 K=2048 (17.11) vs standard K=512 (24.08) at same 786K params = 7 mR gap. Cosine similarity in reduced subspaces (192-d vs 768-d) is less discriminative; frozen encoder features are correlated across dims so splitting disrupts information. ~17 mR ceiling matches Procrustes BA and no-rotation shared anchors — all "constrained measurement" approaches land here.
+
+Details: `experiments/exp_feature_split/results.md`
+
+### ATCR — COMPLETE (negative result)
+Anchor Territory Coherence Regularization: maximize weighted pairwise coherence per anchor territory. CLS-only, BA K=128, COCO 118K, Flickr30k eval, seed=42.
+
+| λ | mR | Δ vs baseline (23.66) |
+|---|------|------|
+| 0.1 | 23.57 | -0.09 |
+| 1.0 | 22.45 | -1.21 |
+| 5.0 | 18.19 | -5.47 |
+| 10.0 | 14.43 | -9.23 |
+
+**Negative at all λ, no sweet spot.** Conflicts with InfoNCE — territory coherence pushes within-modality profile similarity at the expense of cross-modal discriminativeness. Contrast with STRUCTURE reg (λ=1.0: +1.50) which preserves *relative* structure (distributions) rather than enforcing *absolute* coherence. Phase 2 interpretability analysis skipped.
+
+Details: `experiments/exp_atcr/results.md`
+
 ### Immediate next steps
 1. Test best combo at τ=0.03 K=512 (new project best?)
 2. 3-seed validation (deferred until method finalized)
 3. Paper writing
+
+### Structure Preservation Reg — POSITIVE RESULT (+1.50 mR at CLS K=128)
+JS divergence between pairwise similarity distributions in encoder space vs profile space. Preserves within-modality neighborhood structure. CLS-only, BA K=128, COCO 118K, Flickr30k eval, seed=42.
+
+| λ | mR | Δ vs baseline (23.66) |
+|---|------|------|
+| 0 (baseline) | 23.66 | — |
+| 0.1 | 23.96 | +0.30 |
+| **1.0** | **25.16** | **+1.50** |
+| 5.0 | 23.72 | +0.06 |
+| 10.0 | 21.82 | -1.84 |
+
+**First auxiliary loss to show clear positive result at CLS level.** λ=1.0 optimal — InfoNCE handles cross-modal matching, structure reg ensures within-modality coherence. Unlike previous aux losses (ortho, LB, isometry — all null) that operated on anchor parameters, structure reg operates on sample relationships, providing a complementary signal. Too high λ (≥5) overpowers InfoNCE.
+
+**K scaling + structure reg (λ=1.0, levels=1):**
+
+| K | No reg mR | + λ=1.0 mR | Δ |
+|---|-----------|-----------|------|
+| 128 | 23.66 | 25.16 | +1.50 |
+| 256 | 24.02 | 25.85 | +1.83 |
+| 512 | ~24.08 | 26.05 | ~+1.97 |
+
+**Benefit grows with K** (+1.50 → +1.83 → +1.97). K scaling and structure reg are additive. K=128+reg (25.16, 197K) beats K=256 no-reg (24.02, 393K) — more parameter-efficient than adding anchors.
+
+**Multi-scale (levels=2): negative.** K=128 levels=2: 23.68 (-1.48 vs levels=1). Squared similarity matrix adds noise. levels=1 is optimal.
+
+**CAP tok/tok (K=128, τ=0.05): marginal.** +0.44 mR (36.90→37.34) — CAP already preserves neighborhood structure implicitly via attention. Structure reg is most valuable at CLS level where it provides a unique signal.
+
+Details: `experiments/exp_structure_reg/results.md`
+
+### Procrustes BA — COMPLETE (negative result)
+Orthogonal Procrustes rotation to align image→text space, then shared learnable anchors. CLS-only, COCO 118K, Flickr30k eval, seed=42.
+
+**Alignment diagnostics:** Pre-rotation mean cos=0.001, post-rotation mean cos=-0.001 — **Procrustes finds no real linear correspondence** between independently trained DINOv2 and mpnet spaces. Residual 1.41 ≈ √2 (random unit vector distance).
+
+| Model | Anchor type | Params | mR | Δ vs BA K=128 (23.66) |
+|-------|------------|--------|------|------|
+| No rotation K=128 | shared, identity R | 98K | 17.58 | -6.08 |
+| Procrustes K=128 | shared, ortho R | 98K | 17.36 | -6.30 |
+| Procrustes K=256 | shared, ortho R | 197K | 17.57 | -6.09 |
+| Procrustes K=512 | shared, ortho R | 393K | 17.60 | -6.06 |
+| SA-BA K=128 (MLP) | shared, MLP proj | 558K | 20.51 | -3.15 |
+
+**Key findings:** (1) Procrustes rotation has zero effect (17.36 ≈ 17.58 no rotation) — no linear correspondence exists. (2) All shared-anchor approaches lose ~6 mR vs separate anchors — the strength of BA is per-modality anchor specialization. (3) K scaling nearly flat (K=128→512: +0.24 mR). (4) Surprisingly, SA-BA MLP (20.51) beats Procrustes (17.36) — "lossy" transformation actually helps by enabling cross-modal compatibility. Ranking: separate learnable > MLP shared > Procrustes shared ≈ unaligned shared.
+
+Details: `experiments/exp_procrustes_ba/results_cls.md`
 
 ### Direction A Anchor Analysis — COMPLETE (5 analyses on BA K=128)
 Comprehensive analysis of learned anchors from Experiment B (K=128, seed=42, COCO 118K).
@@ -692,31 +810,147 @@ Reverse-chronological record of development activity. Newest entries first.
 
 ---
 
-## 2026-04-13 — Hybrid Anchor Pool (negative result)
+## 2026-04-14 — ATCR (negative result)
+
+Implemented Anchor Territory Coherence Regularization: weighted pairwise coherence per anchor territory using column-wise softmax of profiles. Added `atcr_loss()` to `losses.py`, `--atcr-lambda`/`--atcr-temperature` CLI args.
+
+Results: Negative at all λ. λ=0.1: 23.57 (-0.09), λ=1.0: 22.45 (-1.21), λ=5.0: 18.19 (-5.47), λ=10.0: 14.43 (-9.23). Territory coherence maximization conflicts with cross-modal contrastive alignment — no sweet spot. STRUCTURE reg's relative approach (JS divergence on distributions) succeeds where ATCR's absolute approach (weighted pairwise similarity) fails.
+
+---
+
+## 2026-04-13 — Feature Dimension Split (negative result)
+
+Implemented multi-head-style feature splitting: each anchor group operates on D/G-dim subspace. Added `feature_split_groups` param to `BridgeAnchorAligner` with `_compute_feature_split_profile()` method (CLS + CAP paths). Anchors stored as (G, K/G, D/G). Added `--feature-split-groups` CLI arg.
+
+Results: All configs worse. G=2 (21.44), G=4 (17.10), G=8 (11.37) vs standard K=512 (24.08). Param-matched G=4 K=2048 (17.11) = 7 mR worse at same 786K params. Low-dim cosine is less discriminative; encoder features correlated across dims.
+
+---
+
+## 2026-04-13 — Structure Reg: K scaling + multi-scale + CAP test
+
+**K scaling (λ=1.0, levels=1):** K=256 → 25.85 (+1.83), K=512 → 26.05 (+1.97). Benefit grows with K. Additive with K scaling.
+
+**Multi-scale (levels=2):** K=128: 23.68 (-1.48), K=256: 24.65 (-1.20). Squared similarity matrix adds noise. levels=1 optimal.
+
+**CAP tok/tok test (K=128, τ=0.05, λ=1.0):** 37.34 mR (+0.44 vs 36.90 baseline). Marginal — CAP already preserves structure implicitly. Structure reg most valuable at CLS level.
+
+---
+
+## 2026-04-13 — Structure Preservation Regularization (POSITIVE RESULT)
 
 **What was done:**
 
-Implemented Hybrid Anchor Pool: M fixed data anchors (K-means centroids, registered as buffers) + K learnable anchors → concat → L2 norm → (M+K)-dim profile. Added `--fixed-anchors` CLI flag, `fixed_anchors`/`fixed_proto_img`/`fixed_proto_txt` params to `BridgeAnchorAligner`. K=0 fixed-only path supported (eval-only, no training). Updated eval utils for checkpoint auto-detection.
+Implemented STRUCTURE-style neighborhood preservation regularization. JS divergence between pairwise similarity distributions in original encoder space and BA profile space, applied separately for image and text.
+
+**Code changes:**
+- `src/models/losses.py`: Added `structure_preservation_loss()` — pairwise cosine → row-wise softmax → JS divergence. Supports multi-scale via matrix powers. Numerically stable manual KL computation.
+- `src/train.py`: Added `--structure-lambda`, `--structure-temperature`, `--structure-levels` CLI args. Integrated in training loop with per-modality loss logging.
+- `configs/default.yaml` + `src/train.py`: Changed wandb_project to "StructureReg".
+
+**Results (CLS-only, BA K=128, COCO 118K, Flickr30k eval, seed=42):**
+
+| λ | mR | Δ |
+|---|------|------|
+| 0 (baseline) | 23.66 | — |
+| 0.1 | 23.96 | +0.30 |
+| **1.0** | **25.16** | **+1.50** |
+| 5.0 | 23.72 | +0.06 |
+| 10.0 | 21.82 | -1.84 |
+
+**First auxiliary loss to improve CLS-level BA.** λ=1.0 gives +1.50 mR by preserving within-modality neighborhood structure — complementary to InfoNCE which only enforces cross-modal matching. Previous aux losses (ortho, LB, isometry, per-anchor contrastive) all null because they operated on anchor parameters; structure reg operates on sample relationships. λ≥5 overpowers InfoNCE.
+
+---
+
+## 2026-04-13 — Procrustes BA (negative result)
+
+**What was done:**
+
+Created `src/models/procrustes_ba.py` — ProcrustesBA model: orthogonal Procrustes rotation (registered buffer) aligns image→text space, then shared learnable anchors measure both modalities. Added `compute_procrustes_rotation()` to train.py (SVD of cross-covariance, with alignment diagnostics). Integrated in `build_model`, added `--no-procrustes` flag for identity-R control.
+
+**Alignment diagnostics (COCO 118K, L2-normalized):**
+- Pre-rotation cos: mean=0.001, post-rotation cos: mean=-0.001 (no improvement)
+- Residual ||Rx-y|| = 1.41 ≈ √2 (random vectors)
+- Conclusion: no linear correspondence exists between independently trained encoders
+
+**Results (CLS-only, BS=256, LR=1e-3, 20 epochs):**
+
+| Model | Params | mR |
+|-------|--------|------|
+| BA K=128 (separate anchors) | 197K | 23.66 |
+| No rotation K=128 (shared, identity) | 98K | 17.58 |
+| Procrustes K=128 (shared, ortho R) | 98K | 17.36 |
+| Procrustes K=256 | 197K | 17.57 |
+| Procrustes K=512 | 393K | 17.60 |
+
+Procrustes rotation has zero effect (17.36 ≈ 17.58). All shared-anchor configs ~6 mR below separate anchors. K scaling nearly flat. Validates that BA's key strength is per-modality anchor specialization.
+
+---
+
+## 2026-04-13 — Hybrid Anchor Pool (exhaustively closed)
+
+Three rounds of experiments: unpaired, paired, norm strategies.
+
+**Round 3 — Normalization strategies:**
+
+Added `--hybrid-norm` CLI arg with three modes: `joint` (current), `separate` (L2 norm each part independently before concat), `weighted` (learnable α balancing). For weighted, `hybrid_alpha` nn.Parameter initialized at 0.5, constrained to [0,1] via sigmoid.
+
+Code: Added `hybrid_norm` param and `hybrid_alpha` to `BridgeAnchorAligner.__init__`/`forward()`. Added alpha logging per epoch in training loop. Updated `_utils.py` for checkpoint auto-detection.
+
+| Norm | M | K | mR | α (final) |
+|------|---|---|------|-----------|
+| separate | 64 | 128 | 14.34 | — |
+| separate | 128 | 128 | 15.86 | — |
+| weighted | 64 | 128 | 23.23 | 0.152 |
+| weighted | 128 | 128 | 23.28 | 0.150 |
+
+Weighted norm nearly recovers baseline (23.66) by learning α→0.15 — effectively ignoring fixed dims. Both M values converge to same α and mR. Proves fixed data anchors add no useful signal beyond what learnable anchors capture.
+
+---
+
+## 2026-04-13 — Hybrid Anchor Pool rounds 1-2 (unpaired + paired)
+
+**What was done:**
+
+Implemented Hybrid Anchor Pool: M fixed data anchors (registered as buffers, no gradient) + K learnable anchors → concat → L2 norm → (M+K)-dim profile. Two rounds of experiments:
+
+1. **Unpaired (independent K-means per modality):** Catastrophic failure — image centroid i and text centroid i have zero correspondence.
+2. **Paired fix:** `_compute_paired_anchors()` — K-means on image space → nearest real sample per centroid → take paired (img, txt). Also tested FPS and random selection. Guarantees index-level cross-modal correspondence.
 
 **Code changes:**
 - `src/models/bridge_anchors.py`: Added `fixed_anchors_k`, `register_buffer` for fixed anchors, hybrid profile concatenation in forward() (CLS + CAP paths), K=0 guard for learnable anchor creation.
-- `src/train.py`: Added `--fixed-anchors` CLI arg, K-means centroid computation in `build_model()`, generalized eval-only guard (n_train_params == 0).
+- `src/train.py`: Added `--fixed-anchors` and `--fixed-anchor-method` CLI args. New `_compute_paired_anchors()` function (kmeans/fps/random on image space with paired text). Updated `build_model()` to use paired selection. Generalized eval-only guard (n_train_params == 0).
 - `src/eval/_utils.py`: Auto-detect `fixed_anchors_img`/`txt` from checkpoint state dict.
 - `configs/default.yaml` + `src/train.py`: Changed wandb_project to "HybridPool".
 
-**Results (CLS-only, COCO 118K, Flickr30k eval, seed=42):**
+**Results — Unpaired (CLS-only, COCO 118K, Flickr30k eval, seed=42):**
 
 | Config | M | K | dim | mR | Δ |
 |--------|---|---|-----|------|------|
 | BA K=128 (baseline) | 0 | 128 | 128 | 23.66 | — |
-| Hybrid M=32 K=128 | 32 | 128 | 160 | 11.3 | -12.4 |
-| Hybrid M=64 K=128 | 64 | 128 | 192 | 7.4 | -16.3 |
-| Hybrid M=128 K=128 | 128 | 128 | 256 | 3.7 | -20.0 |
-| Hybrid M=256 K=128 | 256 | 128 | 384 | 1.5 | -22.2 |
-| Fixed only M=128 K=0 | 128 | 0 | 128 | 0.0 | -23.7 |
-| Learn only K=256 | 0 | 256 | 256 | 24.0 | +0.3 |
+| Unpaired M=32 K=128 | 32 | 128 | 160 | 11.3 | -12.4 |
+| Unpaired M=128 K=128 | 128 | 128 | 256 | 3.7 | -20.0 |
+| Unpaired M=256 K=128 | 256 | 128 | 384 | 1.5 | -22.2 |
+| Fixed unpaired M=128 K=0 | 128 | 0 | 128 | 0.0 | -23.7 |
 
-**Key finding:** Catastrophic negative result. K-means centroids computed independently per modality have zero cross-modal correspondence — they inject noise into the profile. L2 normalization amplifies damage by redistributing magnitude from informative learnable dimensions to uninformative fixed dimensions. More fixed anchors = worse, monotonically. At M=256+K=128, the model is near chance (1.5 mR). Validates that all anchors must be learnable in BA.
+**Results — Paired (CLS-only, COCO 118K, Flickr30k eval, seed=42):**
+
+| Config | M | K | dim | mR | Δ vs baseline | Δ vs unpaired |
+|--------|---|---|-----|------|---------------|---------------|
+| Paired M=32 K=128 | 32 | 128 | 160 | 16.68 | -6.98 | +5.36 |
+| Paired M=64 K=128 | 64 | 128 | 192 | 13.15 | -10.51 | +5.75 |
+| Paired M=128 K=128 | 128 | 128 | 256 | 9.44 | -14.22 | +5.74 |
+| Paired M=256 K=128 | 256 | 128 | 384 | 6.55 | -17.11 | +5.09 |
+| FPS M=128 K=128 | 128 | 128 | 256 | 10.99 | -12.67 | — |
+| Random M=128 K=128 | 128 | 128 | 256 | 9.53 | -14.13 | — |
+| Fixed paired M=128 K=0 | 128 | 0 | 128 | 1.1 | -22.56 | +1.1 |
+
+**Key findings:**
+1. Pairing adds constant ~5.5 mR over unpaired (correspondence fix works), but all configs still far below pure learnable baseline (-7 to -17 mR).
+2. More M = worse, monotonically — same pattern as unpaired.
+3. FPS slightly best sampling method (+1.5 mR over K-means at M=128).
+4. Fixed paired only: 1.1 mR (nonzero, unlike unpaired 0.0, but still near chance).
+5. **Root cause is L2 norm dilution**: fixed dims steal magnitude from learnable dims. Even with perfect correspondence, fixed anchors measure "which data cluster" not "how to discriminate" — gradient optimization finds task-specific positions that data selection cannot.
+6. **Hybrid Anchor Pool definitively closed.** All anchors must be learnable.
 
 ---
 

@@ -72,10 +72,13 @@ def load_model_from_checkpoint(
         has_fixed = "fixed_anchors_img" in state_dict
         fixed_anchors = 0
         fixed_proto_img, fixed_proto_txt = None, None
+        hybrid_norm = "joint"
         if has_fixed:
             fixed_proto_img = state_dict["fixed_anchors_img"]
             fixed_proto_txt = state_dict["fixed_anchors_txt"]
             fixed_anchors = fixed_proto_img.shape[0]
+            if "hybrid_alpha" in state_dict:
+                hybrid_norm = "weighted"
         model: torch.nn.Module = BridgeAnchorAligner(
             dim_img=cfg["model"]["dim_img"],
             dim_txt=cfg["model"]["dim_txt"],
@@ -86,6 +89,7 @@ def load_model_from_checkpoint(
             fixed_anchors=fixed_anchors,
             fixed_proto_img=fixed_proto_img,
             fixed_proto_txt=fixed_proto_txt,
+            hybrid_norm=hybrid_norm,
         )
     elif model_name == "linear_projection":
         model = LinearProjection(

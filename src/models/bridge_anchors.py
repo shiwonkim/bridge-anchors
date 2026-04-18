@@ -131,6 +131,8 @@ class BridgeAnchorAligner(nn.Module):
         fixed_anchors: int = 0,
         fixed_proto_img: torch.Tensor | None = None,
         fixed_proto_txt: torch.Tensor | None = None,
+        hybrid_norm: str = "joint",
+        feature_split_groups: int = 0,
     ) -> None:
         super().__init__()
         self.dim_img = dim_img
@@ -164,15 +166,62 @@ class BridgeAnchorAligner(nn.Module):
         if txt_input not in ("cls", "tokens"):
             raise ValueError(f"txt_input must be 'cls' or 'tokens', got {txt_input!r}")
 
+        # --- Feature Dimension Split ---
+        self.feature_split_groups = feature_split_groups
+        if feature_split_groups > 0:
+            G = feature_split_groups
+            if dim_img % G != 0:
+                raise ValueError(
+                    f"dim_img ({dim_img}) must be divisible by "
+                    f"feature_split_groups ({G})"
+                )
+            if dim_txt % G != 0:
+                raise ValueError(
+                    f"dim_txt ({dim_txt}) must be divisible by "
+                    f"feature_split_groups ({G})"
+                )
+            if num_anchors % G != 0:
+                raise ValueError(
+                    f"num_anchors ({num_anchors}) must be divisible by "
+                    f"feature_split_groups ({G})"
+                )
+
         # Learnable anchors: (K, dim_img) and (K, dim_txt)
         # In HME mode (expert_k > 0), per-expert anchors are created below
         # and the shared anchors_img/txt are unused dead weight, so skip them.
         # When num_anchors=0 (fixed-only mode), no learnable anchors needed.
         self._is_hme = (expert_k > 0 and num_experts > 1)
         if not self._is_hme and num_anchors > 0:
-            self.anchors_img = nn.Parameter(torch.empty(num_anchors, dim_img))
-            self.anchors_txt = nn.Parameter(torch.empty(num_anchors, dim_txt))
-            self._init_anchors(init_method, proto_img, proto_txt)
+            if feature_split_groups > 0:
+                # Feature-split anchors: (G, K/G, D/G) per modality
+                G = feature_split_groups
+                kpg = num_anchors // G
+                dpg_img = dim_img // G
+                dpg_txt = dim_txt // G
+                self.anchors_img = nn.Parameter(
+                    torch.empty(G, kpg, dpg_img),
+                )
+                self.anchors_txt = nn.Parameter(
+                    torch.empty(G, kpg, dpg_txt),
+                )
+                nn.init.normal_(self.anchors_img)
+                nn.init.normal_(self.anchors_txt)
+                with torch.no_grad():
+                    # Normalise each anchor within its subspace
+                    self.anchors_img.data = F.normalize(
+                        self.anchors_img.data, dim=-1,
+                    )
+                    self.anchors_txt.data = F.normalize(
+                        self.anchors_txt.data, dim=-1,
+                    )
+            else:
+                self.anchors_img = nn.Parameter(
+                    torch.empty(num_anchors, dim_img),
+                )
+                self.anchors_txt = nn.Parameter(
+                    torch.empty(num_anchors, dim_txt),
+                )
+                self._init_anchors(init_method, proto_img, proto_txt)
 
         # Group temperatures: fixed per-group τ values (not learnable)
         if group_taus is not None:
@@ -337,11 +386,17 @@ class BridgeAnchorAligner(nn.Module):
 
         # --- Hybrid Anchor Pool: fixed data anchors (K-means centroids) ---
         self.fixed_anchors_k = fixed_anchors
+        self.hybrid_norm = hybrid_norm
         if fixed_anchors > 0:
             if fixed_proto_img is None or fixed_proto_txt is None:
                 raise ValueError(
                     "fixed_proto_img and fixed_proto_txt required when "
                     f"fixed_anchors={fixed_anchors}"
+                )
+            if hybrid_norm not in ("joint", "separate", "weighted"):
+                raise ValueError(
+                    f"hybrid_norm must be 'joint', 'separate', or 'weighted', "
+                    f"got {hybrid_norm!r}"
                 )
             self.register_buffer(
                 "fixed_anchors_img",
@@ -351,6 +406,8 @@ class BridgeAnchorAligner(nn.Module):
                 "fixed_anchors_txt",
                 F.normalize(fixed_proto_txt.clone(), dim=-1),
             )
+            if hybrid_norm == "weighted":
+                self.hybrid_alpha = nn.Parameter(torch.tensor(0.5))
 
     def _init_anchors(
         self,
@@ -691,6 +748,75 @@ class BridgeAnchorAligner(nn.Module):
 
         return p_img, p_txt
 
+    def _compute_feature_split_profile(
+        self,
+        emb: torch.Tensor,
+        anchors: torch.Tensor,
+        pool: str,
+        mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Compute profile with feature-dimension splitting.
+
+        Each anchor group operates on a non-overlapping slice of the
+        feature dimension, analogous to multi-head attention.
+
+        Args:
+            emb: (B, D) for CLS or (B, T, D) for tokens.
+            anchors: (G, K/G, D/G) per-group anchors.
+            pool: ``'cls'``, ``'mean'``, ``'max'``, or ``'cross_attn'``.
+            mask: (B, T) text padding mask (token-level only).
+
+        Returns:
+            raw_profile: (B, K) concatenated per-group profiles.
+        """
+        G = anchors.shape[0]
+        kpg = anchors.shape[1]
+        dpg = anchors.shape[2]
+
+        parts = []
+        for g in range(G):
+            a_g = F.normalize(anchors[g], dim=-1)  # (K/G, D/G)
+
+            if emb.dim() == 2:
+                # CLS: (B, D) → slice to (B, D/G)
+                emb_g = emb[:, g * dpg : (g + 1) * dpg]
+                emb_g = F.normalize(emb_g, dim=-1)
+                parts.append(emb_g @ a_g.T)  # (B, K/G)
+            else:
+                # Token: (B, T, D) → slice to (B, T, D/G)
+                emb_g = emb[:, :, g * dpg : (g + 1) * dpg]
+                emb_g = F.normalize(emb_g, dim=-1)
+                sim_g = emb_g @ a_g.T  # (B, T, K/G)
+
+                if pool == "mean":
+                    if mask is not None:
+                        mask_exp = mask.unsqueeze(-1)
+                        raw_g = (sim_g * mask_exp).sum(dim=1)
+                        raw_g = raw_g / mask.sum(dim=1, keepdim=True).clamp(min=1)
+                    else:
+                        raw_g = sim_g.mean(dim=1)
+                elif pool == "max":
+                    if mask is not None:
+                        sim_g = sim_g.masked_fill(
+                            ~mask.bool().unsqueeze(-1), float("-inf"),
+                        )
+                    raw_g = sim_g.max(dim=1).values
+                elif pool == "cross_attn":
+                    logits_g = sim_g / self.pool_temperature
+                    if mask is not None:
+                        logits_g = logits_g.masked_fill(
+                            ~mask.bool().unsqueeze(-1), float("-inf"),
+                        )
+                    attn_g = F.softmax(logits_g, dim=1)
+                    attn_g = attn_g.nan_to_num(0.0)
+                    raw_g = (attn_g * sim_g).sum(dim=1)  # (B, K/G)
+                else:
+                    raise ValueError(f"Unknown pool: {pool!r}")
+
+                parts.append(raw_g)
+
+        return torch.cat(parts, dim=-1)  # (B, K)
+
     def forward(
         self,
         img_emb: torch.Tensor,
@@ -743,8 +869,9 @@ class BridgeAnchorAligner(nn.Module):
             txt_emb = self.proj_txt(txt_emb)
 
         # L2-normalise anchors (on the forward pass so gradients flow
-        # through the original parameters). Not used in HME mode or K=0.
-        if self._is_hme or self.num_anchors == 0:
+        # through the original parameters). Not used in HME mode, K=0, or
+        # feature-split mode (normalised per-group inside _compute_feature_split_profile).
+        if self._is_hme or self.num_anchors == 0 or self.feature_split_groups > 0:
             a_img = a_txt = None
         else:
             a_img = F.normalize(self.anchors_img, dim=-1)  # (K, dim_img)
@@ -989,6 +1116,15 @@ class BridgeAnchorAligner(nn.Module):
             raw_img = torch.cat(raw_img_parts, dim=-1)
             raw_txt = torch.cat(raw_txt_parts, dim=-1)
 
+        elif self.feature_split_groups > 0 and self.num_anchors > 0:
+            # --- Feature-split path ---
+            raw_img = self._compute_feature_split_profile(
+                img_emb, self.anchors_img, pool=img_pool,
+            )
+            raw_txt = self._compute_feature_split_profile(
+                txt_emb, self.anchors_txt, pool=txt_pool,
+                mask=txt_mask if self.txt_input == "tokens" else None,
+            )
         elif self.num_anchors > 0:
             # --- Single-expert path (original) ---
             raw_img, sim_img = self._compute_profile(
@@ -1050,9 +1186,31 @@ class BridgeAnchorAligner(nn.Module):
                 fixed_raw_txt = F.normalize(txt_emb, dim=-1) @ fa_txt.T
 
             if raw_img is not None and self.num_anchors > 0:
-                # Hybrid: concat fixed + learnable
-                raw_img = torch.cat([fixed_raw_img, raw_img], dim=-1)
-                raw_txt = torch.cat([fixed_raw_txt, raw_txt], dim=-1)
+                # Hybrid: concat fixed + learnable with norm strategy
+                if self.hybrid_norm == "joint":
+                    raw_img = torch.cat([fixed_raw_img, raw_img], dim=-1)
+                    raw_txt = torch.cat([fixed_raw_txt, raw_txt], dim=-1)
+                elif self.hybrid_norm == "separate":
+                    fixed_n_img = F.normalize(fixed_raw_img, dim=-1)
+                    fixed_n_txt = F.normalize(fixed_raw_txt, dim=-1)
+                    learn_n_img = F.normalize(raw_img, dim=-1)
+                    learn_n_txt = F.normalize(raw_txt, dim=-1)
+                    raw_img = torch.cat([fixed_n_img, learn_n_img], dim=-1)
+                    raw_txt = torch.cat([fixed_n_txt, learn_n_txt], dim=-1)
+                elif self.hybrid_norm == "weighted":
+                    fixed_n_img = F.normalize(fixed_raw_img, dim=-1)
+                    fixed_n_txt = F.normalize(fixed_raw_txt, dim=-1)
+                    learn_n_img = F.normalize(raw_img, dim=-1)
+                    learn_n_txt = F.normalize(raw_txt, dim=-1)
+                    alpha = torch.sigmoid(self.hybrid_alpha)
+                    raw_img = torch.cat(
+                        [alpha * fixed_n_img, (1 - alpha) * learn_n_img],
+                        dim=-1,
+                    )
+                    raw_txt = torch.cat(
+                        [alpha * fixed_n_txt, (1 - alpha) * learn_n_txt],
+                        dim=-1,
+                    )
             else:
                 # Fixed-only (K=0): use fixed profiles only
                 raw_img = fixed_raw_img
@@ -1155,10 +1313,18 @@ class BridgeAnchorAligner(nn.Module):
         fixed_str = ""
         if self.fixed_anchors_k > 0:
             fixed_str = f", fixed_anchors={self.fixed_anchors_k}"
+            if self.hybrid_norm != "joint":
+                fixed_str += f", hybrid_norm='{self.hybrid_norm}'"
+        fsplit_str = ""
+        if self.feature_split_groups > 0:
+            G = self.feature_split_groups
+            kpg = self.num_anchors // G
+            dpg = self.dim_img // G
+            fsplit_str = f", feature_split={G}g×{kpg}k×{dpg}d"
         return (
             f"dim_img={self.dim_img}, dim_txt={self.dim_txt}, "
             f"num_anchors={self.num_anchors}, init_method='{self.init_method}'"
             f"{top_k_str}{pool_str}{temp_str}{prior_str}{ca_cls_str}{am_str}"
-            f"{proj_str}{fixed_str}, "
+            f"{proj_str}{fixed_str}{fsplit_str}, "
             f"img_input='{self.img_input}', txt_input='{self.txt_input}'"
         )

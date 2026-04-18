@@ -39,12 +39,14 @@ from src.models.freeze_align import FreezeAlignProjector
 from src.models.losses import (
     anchor_isometry_loss,
     anchor_orthogonality_loss,
+    atcr_loss,
     hierarchical_attention_diversity_loss,
     info_nce_loss,
     load_balancing_loss,
     per_anchor_contrastive_loss,
     per_anchor_info_nce_loss,
     reconstruction_loss,
+    structure_preservation_loss,
     token_matching_loss,
 )
 
@@ -122,6 +124,16 @@ def apply_cli_overrides(cfg: dict[str, Any], args: argparse.Namespace) -> None:
         cfg["training"]["iso_lambda"] = args.iso_lambda
     if args.token_match_lambda is not None:
         cfg["training"]["token_match_lambda"] = args.token_match_lambda
+    if getattr(args, "structure_lambda", None) is not None:
+        cfg["training"]["structure_lambda"] = args.structure_lambda
+    if getattr(args, "structure_temperature", None) is not None:
+        cfg["training"]["structure_temperature"] = args.structure_temperature
+    if getattr(args, "structure_levels", None) is not None:
+        cfg["training"]["structure_levels"] = args.structure_levels
+    if getattr(args, "atcr_lambda", None) is not None:
+        cfg["training"]["atcr_lambda"] = args.atcr_lambda
+    if getattr(args, "atcr_temperature", None) is not None:
+        cfg["training"]["atcr_temperature"] = args.atcr_temperature
     if getattr(args, "diversity_lambda", None) is not None:
         cfg["training"]["diversity_lambda"] = args.diversity_lambda
     if getattr(args, "diversity_sigma", None) is not None:
@@ -428,12 +440,11 @@ def build_model(
         fixed_anchors = getattr(args, "fixed_anchors", 0)
         fixed_proto_img, fixed_proto_txt = None, None
         if fixed_anchors > 0:
-            # Compute K-means centroids for fixed anchors
             fa_ds = ds_for_init
             if fa_ds is None:
                 cls_dir = PROJECT_ROOT / "data" / "embeddings" / "cls"
                 logger.info(
-                    "Loading CLS embeddings for fixed anchor K-means "
+                    "Loading CLS embeddings for paired anchor selection "
                     "(M=%d)...", fixed_anchors,
                 )
                 fa_ds = PairedEmbeddingDataset(
@@ -441,12 +452,9 @@ def build_model(
                     txt_emb_path=cls_dir / "coco_train_txt.pt",
                     seed=seed,
                 )
-            logger.info(
-                "Computing %d K-means centroids for fixed anchors...",
-                fixed_anchors,
-            )
-            fixed_proto_img, fixed_proto_txt = _compute_kmeans_centroids(
-                fa_ds, fixed_anchors, seed,
+            fixed_method = getattr(args, "fixed_anchor_method", "kmeans")
+            fixed_proto_img, fixed_proto_txt = _compute_paired_anchors(
+                fa_ds, fixed_anchors, seed, method=fixed_method,
             )
 
         model = BridgeAnchorAligner(
@@ -477,6 +485,8 @@ def build_model(
             fixed_anchors=fixed_anchors,
             fixed_proto_img=fixed_proto_img,
             fixed_proto_txt=fixed_proto_txt,
+            hybrid_norm=getattr(args, "hybrid_norm", "joint"),
+            feature_split_groups=getattr(args, "feature_split_groups", 0),
             img_input=args.img_input,
             txt_input=args.txt_input,
             ca_exclude_cls=getattr(args, "ca_exclude_cls", False),
@@ -530,6 +540,40 @@ def build_model(
             num_anchors=cfg["model"]["num_anchors"],
             hidden_dim=getattr(args, "hidden_dim", 256),
             projector_type=getattr(args, "projector_type", "mlp"),
+            img_input=args.img_input,
+            txt_input=args.txt_input,
+        )
+
+    elif model_name == "procrustes_ba":
+        from src.models.procrustes_ba import ProcrustesBA
+
+        assert dim_img == dim_txt, (
+            f"Procrustes requires dim_img == dim_txt, got {dim_img} vs {dim_txt}"
+        )
+        num_anchors = cfg["model"]["num_anchors"]
+
+        # Load dataset for Procrustes computation
+        pro_ds = train_dataset
+        if pro_ds is None:
+            cls_dir = PROJECT_ROOT / "data" / "embeddings" / "cls"
+            logger.info("Loading CLS embeddings for Procrustes rotation...")
+            pro_ds = PairedEmbeddingDataset(
+                img_emb_path=cls_dir / "coco_train_img.pt",
+                txt_emb_path=cls_dir / "coco_train_txt.pt",
+                seed=seed,
+            )
+
+        no_procrustes = getattr(args, "no_procrustes", False)
+        if no_procrustes:
+            logger.info("--no-procrustes: using identity rotation (no alignment)")
+            R_matrix = torch.eye(dim_img)
+        else:
+            R_matrix = compute_procrustes_rotation(pro_ds, seed)
+
+        model = ProcrustesBA(
+            dim=dim_img,
+            num_anchors=num_anchors,
+            R_matrix=R_matrix,
             img_input=args.img_input,
             txt_input=args.txt_input,
         )
@@ -715,6 +759,156 @@ def _select_fixed_anchors(
     return img_embs[indices], txt_embs[indices]
 
 
+def _compute_paired_anchors(
+    dataset: PairedEmbeddingDataset,
+    m: int,
+    seed: int,
+    method: str = "kmeans",
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Select M representative paired samples as fixed anchors.
+
+    Unlike ``_compute_kmeans_centroids`` which runs K-means independently
+    per modality (no cross-modal correspondence), this selects actual
+    data samples so that image anchor i and text anchor i are a true
+    image-text pair, guaranteeing index-level cross-modal alignment.
+
+    Args:
+        dataset: Paired embedding dataset.
+        m: Number of paired anchors to select.
+        seed: Random seed for reproducibility.
+        method: Selection strategy — ``'kmeans'`` (cluster image space,
+            pick nearest real sample per centroid), ``'fps'`` (farthest
+            point sampling on image space), or ``'random'`` (uniform
+            random selection of paired samples).
+
+    Returns:
+        paired_img: (M, dim_img) actual image embeddings from data.
+        paired_txt: (M, dim_txt) corresponding paired text embeddings.
+    """
+    img_embs, txt_embs = dataset.get_all()
+
+    if method == "kmeans":
+        from sklearn.cluster import KMeans
+
+        logger.info(
+            "Computing %d paired anchors via image K-means on %d samples...",
+            m, img_embs.shape[0],
+        )
+        km = KMeans(n_clusters=m, random_state=seed, n_init=1, max_iter=100)
+        km.fit(img_embs.numpy())
+        centroids = torch.from_numpy(km.cluster_centers_).float()  # (M, D)
+
+        # Find nearest actual sample to each centroid
+        centroids_norm = F.normalize(centroids, dim=-1)
+        img_norm = F.normalize(img_embs, dim=-1)
+        sim = centroids_norm @ img_norm.T  # (M, N)
+        nearest_idx = sim.argmax(dim=1)  # (M,)
+
+        paired_img = img_embs[nearest_idx]
+        paired_txt = txt_embs[nearest_idx]
+
+    elif method == "fps":
+        logger.info(
+            "Computing %d paired anchors via image FPS on %d samples...",
+            m, img_embs.shape[0],
+        )
+        img_norm = F.normalize(img_embs, dim=-1)
+
+        # Start with point closest to mean
+        mean = img_norm.mean(dim=0, keepdim=True)
+        first_idx = (img_norm @ mean.T).squeeze().argmax().item()
+
+        selected: list[int] = [first_idx]
+        min_sim = (img_norm @ img_norm[first_idx]).clone()  # (N,)
+
+        for _ in range(m - 1):
+            min_sim[selected] = float("inf")
+            next_idx = min_sim.argmin().item()
+            selected.append(next_idx)
+            new_sim = img_norm @ img_norm[next_idx]
+            min_sim = torch.max(min_sim, new_sim)
+
+        paired_img = img_embs[selected]
+        paired_txt = txt_embs[selected]
+
+    elif method == "random":
+        logger.info(
+            "Computing %d paired anchors via random selection...", m,
+        )
+        gen = torch.Generator().manual_seed(seed)
+        indices = torch.randperm(img_embs.shape[0], generator=gen)[:m]
+        paired_img = img_embs[indices]
+        paired_txt = txt_embs[indices]
+
+    else:
+        raise ValueError(f"Unknown paired anchor method: {method!r}")
+
+    return paired_img, paired_txt
+
+
+def compute_procrustes_rotation(
+    dataset: PairedEmbeddingDataset,
+    seed: int,
+) -> torch.Tensor:
+    """Compute optimal orthogonal rotation aligning image space to text space.
+
+    Solves the Orthogonal Procrustes Problem:
+        R* = argmin ||X_img @ R - X_txt||_F  s.t. R^T R = I
+        Solution: X_img^T @ X_txt = U S V^H  =>  R* = V @ U^T
+
+    Args:
+        dataset: Paired embedding dataset.
+        seed: Random seed (unused, kept for API consistency).
+
+    Returns:
+        R: (D, D) orthogonal rotation matrix.
+    """
+    img_embs, txt_embs = dataset.get_all()
+
+    # L2 normalise before computing rotation
+    img_norm = F.normalize(img_embs, dim=-1)
+    txt_norm = F.normalize(txt_embs, dim=-1)
+
+    # Pre-rotation alignment
+    pre_cos = (img_norm * txt_norm).sum(dim=-1)
+    logger.info(
+        "Pre-rotation alignment: mean cos=%.4f, median=%.4f, std=%.4f",
+        pre_cos.mean().item(), pre_cos.median().item(), pre_cos.std().item(),
+    )
+
+    # Cross-covariance matrix and SVD
+    C = img_norm.T @ txt_norm  # (D, D)
+    U, S, Vh = torch.linalg.svd(C)
+    # C = U @ diag(S) @ Vh, so R* = Vh^T @ U^T
+    R = Vh.T @ U.T  # (D, D)
+
+    # Verify orthogonality
+    I_check = R @ R.T
+    ortho_err = (I_check - torch.eye(R.shape[0])).abs().max().item()
+    logger.info("Procrustes R computed. Orthogonality error: %.2e", ortho_err)
+
+    # Post-rotation alignment
+    img_rotated = img_norm @ R
+    post_cos = (img_rotated * txt_norm).sum(dim=-1)
+    logger.info(
+        "Post-rotation alignment: mean cos=%.4f, median=%.4f, std=%.4f",
+        post_cos.mean().item(), post_cos.median().item(), post_cos.std().item(),
+    )
+
+    # Residual
+    residual = (img_rotated - txt_norm).norm(dim=-1).mean().item()
+    logger.info("Mean per-sample residual ||Rx - y||: %.4f", residual)
+
+    # Top singular values
+    top_s = S[:10].tolist()
+    logger.info(
+        "Top-10 singular values of C: %s",
+        ", ".join(f"{s:.3f}" for s in top_s),
+    )
+
+    return R
+
+
 # ---------------------------------------------------------------------------
 # Scheduler with linear warmup
 # ---------------------------------------------------------------------------
@@ -817,7 +1011,7 @@ class MetricsLogger:
             import wandb
 
             project = cfg.get("logging", {}).get(
-                "wandb_project", "HybridPool",
+                "wandb_project", "ATCR",
             )
             # Allow env-var override
             project = os.environ.get("WANDB_PROJECT", project)
@@ -886,6 +1080,11 @@ def train_one_epoch(
     diversity_modality: str = "both",
     recon_lambda: float = 0.0,
     lb_route_lambda: float = 0.0,
+    structure_lambda: float = 0.0,
+    structure_temperature: float = 0.05,
+    structure_levels: int = 1,
+    atcr_lambda: float = 0.0,
+    atcr_temperature: float = 0.05,
     num_experts: int = 1,
     *,
     is_chunked: bool = False,
@@ -922,6 +1121,12 @@ def train_one_epoch(
     total_diversity = 0.0
     total_recon = 0.0
     total_lb_route = 0.0
+    total_structure = 0.0
+    total_structure_img = 0.0
+    total_structure_txt = 0.0
+    total_atcr = 0.0
+    total_atcr_img = 0.0
+    total_atcr_txt = 0.0
     # Per-expert monitoring totals (HME/HardRoute mode)
     per_expert_recon: list[float] = []
     per_expert_infonce: list[float] = []
@@ -1219,6 +1424,65 @@ def train_one_epoch(
                         ent = -(attn * torch.log(attn + 1e-8)).sum(dim=1).mean()
                         per_expert_attn_entropy[g] += ent.item()
 
+        # --- Structure preservation regularization ---
+        struct_loss_val = 0.0
+        struct_loss_img_val = 0.0
+        struct_loss_txt_val = 0.0
+        if structure_lambda > 0:
+            # Original embeddings: CLS tokens from frozen encoder
+            if img_emb.dim() == 3:
+                orig_img = img_emb[:, 0, :].detach()
+            else:
+                orig_img = img_emb.detach()
+            txt_src = txt_for_model
+            if txt_src.dim() == 3:
+                orig_txt = txt_src[:, 0, :].detach()
+            else:
+                orig_txt = txt_src.detach()
+
+            s_img = structure_preservation_loss(
+                orig_img, b_img,
+                temperature=structure_temperature,
+                structure_levels=structure_levels,
+            )
+            s_txt = structure_preservation_loss(
+                orig_txt, b_txt,
+                temperature=structure_temperature,
+                structure_levels=structure_levels,
+            )
+            s_loss = s_img + s_txt
+            loss = loss + structure_lambda * s_loss
+            struct_loss_val = s_loss.item()
+            struct_loss_img_val = s_img.item()
+            struct_loss_txt_val = s_txt.item()
+
+        # --- Anchor Territory Coherence Regularization ---
+        atcr_loss_val = 0.0
+        atcr_loss_img_val = 0.0
+        atcr_loss_txt_val = 0.0
+        if atcr_lambda > 0:
+            if img_emb.dim() == 3:
+                atcr_orig_img = img_emb[:, 0, :].detach()
+            else:
+                atcr_orig_img = img_emb.detach()
+            txt_src = txt_for_model
+            if txt_src.dim() == 3:
+                atcr_orig_txt = txt_src[:, 0, :].detach()
+            else:
+                atcr_orig_txt = txt_src.detach()
+
+            a_img_loss = atcr_loss(
+                atcr_orig_img, b_img, temperature=atcr_temperature,
+            )
+            a_txt_loss = atcr_loss(
+                atcr_orig_txt, b_txt, temperature=atcr_temperature,
+            )
+            a_total = a_img_loss + a_txt_loss
+            loss = loss + atcr_lambda * a_total
+            atcr_loss_val = a_total.item()
+            atcr_loss_img_val = a_img_loss.item()
+            atcr_loss_txt_val = a_txt_loss.item()
+
         loss.backward()
 
         if grad_clip > 0:
@@ -1237,6 +1501,12 @@ def train_one_epoch(
         total_diversity += diversity_loss_val
         total_recon += recon_loss_val
         total_lb_route += lb_route_loss_val
+        total_structure += struct_loss_val
+        total_structure_img += struct_loss_img_val
+        total_structure_txt += struct_loss_txt_val
+        total_atcr += atcr_loss_val
+        total_atcr_img += atcr_loss_img_val
+        total_atcr_txt += atcr_loss_txt_val
         num_batches += 1
 
     avg_loss = total_loss / max(num_batches, 1)
@@ -1260,6 +1530,14 @@ def train_one_epoch(
         result["recon_loss"] = total_recon / max(num_batches, 1)
     if lb_route_lambda > 0:
         result["lb_route_loss"] = total_lb_route / max(num_batches, 1)
+    if structure_lambda > 0:
+        result["structure_loss"] = total_structure / max(num_batches, 1)
+        result["structure_loss_img"] = total_structure_img / max(num_batches, 1)
+        result["structure_loss_txt"] = total_structure_txt / max(num_batches, 1)
+    if atcr_lambda > 0:
+        result["atcr_loss"] = total_atcr / max(num_batches, 1)
+        result["atcr_loss_img"] = total_atcr_img / max(num_batches, 1)
+        result["atcr_loss_txt"] = total_atcr_txt / max(num_batches, 1)
     # Per-expert monitoring metrics
     if per_expert_infonce:
         nb = max(num_batches, 1)
@@ -1488,6 +1766,11 @@ def main() -> None:
     diversity_sigma = cfg["training"].get("diversity_sigma", 0.2)
     recon_lambda = cfg["training"].get("recon_lambda", 0.0)
     lb_route_lambda = cfg["training"].get("lb_route_lambda", 0.0)
+    structure_lambda = cfg["training"].get("structure_lambda", 0.0)
+    structure_temperature = cfg["training"].get("structure_temperature", 0.05)
+    structure_levels = cfg["training"].get("structure_levels", 1)
+    atcr_lambda = cfg["training"].get("atcr_lambda", 0.0)
+    atcr_temperature = cfg["training"].get("atcr_temperature", 0.05)
     img_token_level = (args.img_input == "tokens")
     eval_every = cfg["eval"]["eval_every"]
 
@@ -1529,6 +1812,11 @@ def main() -> None:
             diversity_modality=getattr(args, "diversity_modality", "both"),
             recon_lambda=recon_lambda,
             lb_route_lambda=lb_route_lambda,
+            structure_lambda=structure_lambda,
+            structure_temperature=structure_temperature,
+            structure_levels=structure_levels,
+            atcr_lambda=atcr_lambda,
+            atcr_temperature=atcr_temperature,
             num_experts=getattr(args, "num_experts", 1),
             is_chunked=(train_chunked is not None),
             txt_token_level=txt_token_level,
@@ -1546,7 +1834,10 @@ def main() -> None:
         }
         for aux_key in ("ortho_loss", "iso_loss", "lb_loss", "pa_loss",
                         "token_match_loss", "ca_loss", "diversity_loss",
-                        "recon_loss", "lb_route_loss"):
+                        "recon_loss", "lb_route_loss",
+                        "structure_loss", "structure_loss_img",
+                        "structure_loss_txt",
+                        "atcr_loss", "atcr_loss_img", "atcr_loss_txt"):
             if aux_key in train_metrics:
                 log_dict[f"train/{aux_key}"] = train_metrics[aux_key]
         # Per-expert monitoring metrics
@@ -1618,6 +1909,12 @@ def main() -> None:
                 f" mR={retrieval_metrics['mean_recall']:.1f}"
             )
 
+        # Log hybrid alpha if using weighted norm
+        if hasattr(model, "hybrid_alpha"):
+            alpha_val = torch.sigmoid(model.hybrid_alpha).item()
+            log_dict["hybrid_alpha"] = alpha_val
+            log_line += f" | α={alpha_val:.3f}"
+
         # Log all metrics for this epoch in a single wandb call
         metrics_logger.log(log_dict, step=global_step)
 
@@ -1679,7 +1976,7 @@ def parse_args() -> argparse.Namespace:
         "--model", type=str, default=None,
         choices=["bridge_anchors", "linear_projection", "mlp_projection",
                  "fixed_relative_rep", "freeze_align", "shared_anchor",
-                 "hard_route"],
+                 "hard_route", "procrustes_ba"],
         help="Model type (overrides config).",
     )
     parser.add_argument(
@@ -1731,6 +2028,28 @@ def parse_args() -> argparse.Namespace:
         "--token-match-lambda", type=float, default=None,
         help="Weight for token-level matching loss. Only active when both "
              "img_input=tokens and txt_input=tokens.",
+    )
+    parser.add_argument(
+        "--structure-lambda", type=float, default=None,
+        help="Weight for structure preservation regularization (JS divergence "
+             "between pairwise similarity distributions). 0 = disabled.",
+    )
+    parser.add_argument(
+        "--structure-temperature", type=float, default=None,
+        help="Temperature for pairwise softmax in structure reg (default: 0.05).",
+    )
+    parser.add_argument(
+        "--structure-levels", type=int, default=None,
+        help="Multi-scale levels for structure reg (default: 1, direct only).",
+    )
+    parser.add_argument(
+        "--atcr-lambda", type=float, default=None,
+        help="Weight for Anchor Territory Coherence Regularization. "
+             "0 = disabled (default).",
+    )
+    parser.add_argument(
+        "--atcr-temperature", type=float, default=None,
+        help="Temperature for ATCR territory softmax (default: 0.05).",
     )
     parser.add_argument(
         "--top-k", type=int, default=None,
@@ -1877,9 +2196,29 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--fixed-anchors", type=int, default=0,
-        help="Number of fixed data anchors (K-means centroids) for Hybrid "
-             "Anchor Pool. 0 = disabled (default). When > 0, M fixed anchors "
+        help="Number of fixed data anchors for Hybrid Anchor Pool. "
+             "0 = disabled (default). When > 0, M fixed paired anchors "
              "are concatenated with K learnable anchors for (M+K)-dim profile.",
+    )
+    parser.add_argument(
+        "--fixed-anchor-method", type=str, default="kmeans",
+        choices=["kmeans", "fps", "random"],
+        help="Selection method for fixed paired anchors: 'kmeans' (cluster "
+             "image space, nearest real sample per centroid), 'fps' (farthest "
+             "point sampling on image space), 'random' (uniform random pairs).",
+    )
+    parser.add_argument(
+        "--hybrid-norm", type=str, default="joint",
+        choices=["joint", "separate", "weighted"],
+        help="Normalization strategy for hybrid anchor profiles: 'joint' "
+             "(single L2 norm on concat), 'separate' (L2 norm each part "
+             "before concat), 'weighted' (learnable alpha balancing).",
+    )
+    parser.add_argument(
+        "--feature-split-groups", type=int, default=0,
+        help="Number of feature-dimension groups for split anchors. "
+             "0 = disabled (default). When > 0, each anchor group operates "
+             "on D/G dimensional subspace. Analogous to multi-head attention.",
     )
     parser.add_argument(
         "--attn-mask-groups", nargs="+", type=int, default=None,
@@ -1924,6 +2263,12 @@ def parse_args() -> argparse.Namespace:
         "--projector-type", type=str, default="mlp",
         choices=["mlp", "linear", "residual", "residual_shared"],
         help="Projector design for SharedAnchorAligner.",
+    )
+    parser.add_argument(
+        "--no-procrustes", action="store_true",
+        help="For procrustes_ba model: skip Procrustes rotation and use "
+             "identity matrix (control experiment for shared anchors "
+             "without alignment).",
     )
     parser.add_argument(
         "--dim-img", type=int, default=None,

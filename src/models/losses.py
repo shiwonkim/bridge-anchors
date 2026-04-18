@@ -410,3 +410,110 @@ def routing_load_balance_loss(
 
     G = soft_gate.shape[-1]
     return G * (f * p).sum()
+
+
+def structure_preservation_loss(
+    original_embeddings: torch.Tensor,
+    aligned_embeddings: torch.Tensor,
+    temperature: float = 0.05,
+    structure_levels: int = 1,
+) -> torch.Tensor:
+    """JS divergence between pairwise similarity distributions.
+
+    Preserves neighborhood structure from the original encoder space in
+    the aligned (profile) space.  For each sample, converts its pairwise
+    cosine similarities to a probability distribution (row-wise softmax)
+    and minimises JS divergence between original and aligned distributions.
+
+    Args:
+        original_embeddings: (B, D) frozen encoder output (CLS embeddings).
+        aligned_embeddings: (B, K) BA profile output.
+        temperature: Softmax temperature for pairwise similarity.
+        structure_levels: Multi-scale levels.  1 = direct similarities
+            only.  l > 1 also includes l-hop similarities via matrix
+            powers of the similarity matrix.
+
+    Returns:
+        Scalar JS divergence loss (mean over all samples and levels).
+    """
+    orig_norm = F.normalize(original_embeddings, dim=-1)
+    align_norm = F.normalize(aligned_embeddings, dim=-1)
+
+    S_orig = orig_norm @ orig_norm.T  # (B, B)
+    S_align = align_norm @ align_norm.T  # (B, B)
+
+    # Mask out self-similarity (diagonal)
+    mask = ~torch.eye(
+        S_orig.shape[0], dtype=torch.bool, device=S_orig.device,
+    )
+
+    def _js_div(S_o: torch.Tensor, S_a: torch.Tensor) -> torch.Tensor:
+        # Row-wise softmax over non-self neighbours
+        logits_o = S_o.masked_fill(~mask, float("-inf")) / temperature
+        logits_a = S_a.masked_fill(~mask, float("-inf")) / temperature
+
+        P = F.softmax(logits_o, dim=-1)
+        Q = F.softmax(logits_a, dim=-1)
+
+        # JS(P, Q) = 0.5 * KL(P||M) + 0.5 * KL(Q||M), M = 0.5*(P+Q)
+        # Compute manually to avoid log(0) issues:
+        # KL(P||M) = sum_j P_j * log(P_j / M_j)
+        M = 0.5 * (P + Q)  # M > 0 wherever P or Q > 0
+        # Clamp for numerical safety
+        eps = 1e-8
+        kl_pm = (P * ((P + eps).log() - (M + eps).log())).sum(dim=-1)
+        kl_qm = (Q * ((Q + eps).log() - (M + eps).log())).sum(dim=-1)
+        js = 0.5 * (kl_pm + kl_qm)  # (B,)
+        return js.mean()
+
+    js = _js_div(S_orig, S_align)
+
+    if structure_levels > 1:
+        for _l in range(2, structure_levels + 1):
+            S_orig_l = torch.linalg.matrix_power(S_orig, _l)
+            S_align_l = torch.linalg.matrix_power(S_align, _l)
+            js = js + _js_div(S_orig_l, S_align_l)
+
+    return js
+
+
+def atcr_loss(
+    original_embeddings: torch.Tensor,
+    profiles: torch.Tensor,
+    temperature: float = 0.05,
+) -> torch.Tensor:
+    """Anchor Territory Coherence Regularization.
+
+    Encourages each anchor's "territory" (samples with high profile
+    values for that anchor) to be semantically coherent in the original
+    encoder space.  Computes weighted pairwise coherence per anchor
+    using soft territory membership, then maximises mean coherence.
+
+    Args:
+        original_embeddings: (B, D) frozen encoder output (should be
+            detached — no gradient through originals).
+        profiles: (B, K) L2-normalised BA profiles (gradient flows
+            through these).
+        temperature: Temperature for column-wise softmax that converts
+            profile values to soft territory weights.
+
+    Returns:
+        Scalar loss (negative mean coherence — minimise to maximise
+        territory coherence).
+    """
+    # Original pairwise similarity (no gradient)
+    orig_norm = F.normalize(original_embeddings, dim=-1)
+    S_orig = orig_norm @ orig_norm.T  # (B, B)
+
+    # Soft territory weights: column-wise softmax over samples
+    # W[:, k] gives how much each sample belongs to anchor k's territory
+    W = F.softmax(profiles / temperature, dim=0)  # (B, K)
+
+    # Coherence per anchor: diag(W^T @ S_orig @ W)
+    # = for each k: sum_{i,j} W[i,k] * S_orig[i,j] * W[j,k]
+    # Efficient: compute (S_orig @ W) first, then element-wise multiply
+    SW = S_orig @ W  # (B, K)
+    coherence = (W * SW).sum(dim=0)  # (K,)
+
+    # Maximise coherence → minimise negative coherence
+    return -coherence.mean()
